@@ -14,6 +14,7 @@ import Graphics.UI.WX.Classes
 import Control.Concurrent
 import Graphics.UI.WXCore.WxcDefs
 import Graphics.UI.WX.Dialogs
+import Graphics.UI.WXCore.WxcClassesMZ
 
 --type MyList = Composite (SingleListBox ()) ()
 
@@ -29,6 +30,23 @@ data Stanza = Message
               { msg :: String
               }
               
+              
+data Chat a = Chat 
+              { chatPanel :: Panel a,
+                history :: TextCtrl a,
+                inputMsg :: TextCtrl a
+              }
+
+instance Widget (Chat a) where
+  widget w = widget . chatPanel $ w --column 5 $ [widget . history $ w, widget . inputMsg $ w]
+
+chat :: Window a -> IO (Chat ())
+chat wnd = do
+  p <- panel wnd []
+  hist <- textCtrl p []
+  inMsg <- textCtrl p []
+  set p [ layout := fill . column 5 $ [widget hist, widget inMsg]]
+  return $ Chat p hist inMsg
 
 main = start $ do
   f <- frame [ text := "reactive-jabber" ]
@@ -48,21 +66,53 @@ main = start $ do
                     [widget ok]]]
   
   (inputStream, fireInput) <- newAddHandler
---  tc <- entry f []
   itemAppend listBox "temp"
-  result <- showModal d (\stop -> set ok [ on command := stop (Just ())])
-  if result == Just () then do 
-    username <- get usernameEntry text
-    password <- get passwordEntry text
-    realm <- get realmEntry text
-    server <- get serverEntry text
-    h <- login username password realm server
-    return ()
-  else return ()
+  ch <- frame [ text := "chat" ]
+  nb <- notebook ch []
+  t1 <- chat nb --panel nb [ text := "tab 1" ]
+  notebookAddPage nb (chatPanel t1) "Tab" True (-1)
+  --t2 <- panel nb [ text := "tab 2" ]
+  --set ch [ layout := fill $ tabs nb [tab "tab1" (container t1 $ column 5 $ [label $ "label"])] ]
+--  result <- showModal d (\stop -> set ok [ on command := stop (Just ())])
+--  if result == Just () then do 
+--    username <- get usernameEntry text
+--    password <- get passwordEntry text
+--    realm <- get realmEntry text
+--    server <- get serverEntry text
+--    h <- login username password realm server
+--    return ()
+--  else return ()
 --  forkIO $ do
 --    forever $ (hGetInput h) >>= fireInput
   return ()
 
+--createChat :: String -> IO Layout
+
+
+setChat :: Notebook a -> String -> IO Int
+setChat nb name = do
+  names <- chatList nb
+  let mindex = elemIndex name names
+  case mindex of
+    Just index -> notebookSetSelection nb index
+    Nothing -> return (-1)
+      
+    
+  
+chatList :: Notebook a -> IO [String]
+chatList nb = do
+  cnt <- notebookGetPageCount nb
+  chatList' nb cnt
+  
+chatList' :: Notebook a -> Int -> IO [String]
+chatList' nb cnt = do
+  let cnt' = cnt - 1
+  if (cnt' >= 0) then do
+    s <- notebookGetPageText nb cnt'
+    s' <- chatList' nb cnt'
+    return $ s' ++ [s]
+  else return []
+  
 recvMsgLoop :: Handle -> (Stanza -> IO ()) -> ([SaxElement], String) -> IO ()
 recvMsgLoop h fire (els, s) = do
   input <- hGetInput h
