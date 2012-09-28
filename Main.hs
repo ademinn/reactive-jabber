@@ -4,50 +4,30 @@ import Reactive.Banana.Switch
 import Reactive.Banana.Frameworks
 import System.IO
 import System.Glib.Types
-import Text.XML.HaXml.SAX
-import Text.XML.HaXml.Types
-import Network
-import Network.Protocol.SASL.GNU
-import Data.List hiding (union)
-import Data.Maybe (listToMaybe)
-import Data.Traversable (sequenceA)
-import Data.ByteString.UTF8
 import qualified Data.Map as Map
-import Control.Applicative
 import Control.Concurrent
-import Control.Monad
-import Control.Monad.Trans
 import Control.Monad.IO.Class
 import Graphics.UI.Gtk
 import Graphics.UI.Gtk.ModelView as Model
+import Network.XMPP
 
+data Chat = Chat    { userName :: String
+                    , chatPanel :: VPaned
+                    , addMsg :: String -> IO ()
+                    }
 
---type MyList = Composite (SingleListBox ()) ()
---  passwordEntry <- textCtrlEx d wxTE_PASSWORD []
+data Msg = Msg  { chatName :: String
+                , sender :: String
+                , msgText :: String
+                }
 
-data Stanza = Message
-              { to :: String ,
-                from :: String,
-                msg :: String
-              }
-            | Roster
-              { list :: [String]
-              }
-            | IQ
-              { msg :: String
-              }
-
-
-data Chat = Chat
-            {   userName :: String,
-                chatPanel :: VPaned,
-                addMsg :: String -> IO ()
-            }
+instance Show Msg where
+    show (Msg _ s t) = s ++ ": " ++ t
 
 type ChatRequest = (String, Maybe String)
 
-chatNew :: String -> ((String, String) -> IO ()) -> IO Chat
-chatNew s fire = do
+chatNew :: String -> String -> (Msg -> IO ()) -> IO Chat
+chatNew s name fire = do
     outputWdgt <- textViewNew
     tb <- textViewGetBuffer outputWdgt
     textViewSetEditable outputWdgt False
@@ -57,12 +37,12 @@ chatNew s fire = do
         s' <- eventKeyName
         if s' == "Return"
             then do
-                stIt <- liftIO $ startBuf itb
-                enIt <- liftIO $ endBuf itb
-                out <- liftIO $ textBufferGetText itb stIt enIt False
-                --liftIO $ putStrLn out
-                liftIO $ fire (s, out)
-                liftIO $ textBufferSetText itb ""
+                liftIO $ do
+                    stIt <- startBuf itb
+                    enIt <- endBuf itb
+                    out <- textBufferGetText itb stIt enIt False
+                    fire $ Msg s name out
+                    textBufferSetText itb ""
                 return True
             else return False
     mainWdgt <- vPanedNew
@@ -78,13 +58,12 @@ endBuf tb = textBufferGetIterAtOffset tb (-1)
 
 appendText :: TextBuffer -> String -> IO ()
 appendText tb msg = do
-    --line <- textBufferGetLineCount tb
     ti <- endBuf tb
     textBufferInsert tb ti (msg ++ "\n")
 
 instance GObjectClass Chat where
     toGObject = toGObject . chatPanel
-    unsafeCastGObject = undefined --Chat undefined undefined --(unsafeCastGObject o)
+    unsafeCastGObject = undefined
 
 instance ObjectClass Chat
 instance WidgetClass Chat
@@ -121,8 +100,8 @@ main = do
                 passwordText <- entryGetText passwordEntry
                 serverText <- entryGetText serverEntry
                 widgetDestroy loginDialog
-                (h, roster) <- login loginText passwordText serverText serverText
-                mainLoop loginText h roster
+                (con, roster) <- login loginText passwordText serverText serverText
+                mainLoop con roster
             otherwise -> do
                 widgetDestroy loginDialog
                 mainQuit
@@ -130,14 +109,14 @@ main = do
     mainGUI
     return ()
 
-quitChat :: Handle -> IO ()
-quitChat h = do
-    logout h
-    hClose h
+quitChat :: Connection -> IO ()
+quitChat con = do
+    send con CloseStream
     mainQuit
 
-mainLoop :: String -> Handle -> [String] -> IO ()
-mainLoop name h roster = do
+mainLoop :: Connection -> [String] -> IO ()
+mainLoop con roster = do
+    let name = username con
     window <- windowNew
     chWindow <- windowNew
     chats <- notebookNew
@@ -145,19 +124,18 @@ mainLoop name h roster = do
                     , windowDefaultWidth := 200
                     , windowDefaultHeight := 100
                     ]
-    (handler, fireHandler) <- newAddHandler
-    (msgHandler, fireMsgHandler) <- newAddHandler
-    (sendHandler, fireSendHandler) <- newAddHandler
-    treeview <- listTreeView name roster fireHandler
+    (inMsg, fireInMsg) <- newAddHandler
+    (doubleClick, fireDoubleClick) <- newAddHandler
+    treeview <- listTreeView name roster fireDoubleClick
     set window  [ windowDefaultWidth := 100
                 , windowDefaultHeight := 200
                 , containerChild := treeview
                 ]
-    --onDestroy window mainQuit
     window `on` deleteEvent $ do
-        liftIO $ widgetDestroy chWindow
-        liftIO $ putStrLn "exit"
-        liftIO $ quitChat h
+        liftIO $ do
+            widgetDestroy chWindow
+            putStrLn "exit"
+            quitChat con
         return False
     
     chWindow `on` deleteEvent $ do
@@ -166,60 +144,75 @@ mainLoop name h roster = do
 
     let networkDescription :: Frameworks t => Moment t ()
         networkDescription = do
-            (eAdd, fireAdd) <- newEvent
-            eHandler <- fromAddHandler handler
-            eMsg <- fromAddHandler msgHandler
-            eSend <- fromAddHandler sendHandler
+            (eAddChat, fireAddChat) <- newEvent
+            (eAddChat', fireAddChat') <- newEvent
+            (eShowChat', fireShowChat') <- newEvent
+            (ePrintMsg, firePrintMsg) <- newEvent
+            (eOutMsg, fireOutMsg) <- newEvent
+            eInMsg <- fromAddHandler inMsg
+            eShowChat <- fromAddHandler doubleClick
             let
-                sendTo :: (String, String) -> IO ()
-                sendTo (to, msg) = do
-                    sendMsg h to msg
-                    fireMsgHandler (to, Just (name ++ ": " ++ msg))
-                eMap = accumE Map.empty $ insertSafe <$> eAdd
-                bMap = stepper Map.empty eMap
-                addChat :: (ChatRequest, Map.Map String Chat) -> IO ()
-                addChat ((from, msg), m) = do
-                    chat <- case Map.lookup from m of
-                                Just v -> return v
-                                Nothing -> do
-                                    c <- chatNew from fireSendHandler
-                                    fireAdd (from, c)
-                                    return c
-                    case msg of
-                        Just s -> do
-                            addMsg chat s
+                eChatMap = accumE Map.empty $ insertSafe <$> eAddChat'
+                bChatMap = stepper Map.empty eChatMap
+                
+                (<%>) f e = f <$> ((rTuple <$> bChatMap) <@> e)
+                
+                addChat :: (String, Map.Map String Chat) -> IO ()
+                addChat (to, m) = do
+                    case Map.lookup to m of
+                        Just _ -> return ()
                         Nothing -> do
-                            ret <- notebookGetNPages chats
-                            vis <- get chats widgetVisible
-                            if or [(ret == 0), (not vis)]
-                                then widgetShowAll chWindow
-                                else return ()
-                            ind <- notebookPageNum chats chat
-                            case ind of
-                                Just i -> notebookSetCurrentPage chats i
-                                Nothing -> do
-                                    i <- notebookAppendPage chats chat from
-                                    widgetShowAll chat
-                                    notebookSetCurrentPage chats i
-                    --return ()
-            reactimate $ (putStrLn <$> eHandler) `union` (sendTo <$> eSend) `union` (addChat <$> ((rTuple <$> bMap) <@> (((,Nothing) <$> eHandler) `union` eMsg)))
-            --return ()
+                            c <- chatNew to name fireOutMsg
+                            fireAddChat' (to, c)
+                
+                inMsgProc :: Stanza -> IO ()
+                inMsgProc stanza = do
+                    case stanza of
+                        Message (Just f) _ b -> do
+                            fireAddChat f
+                            firePrintMsg $ Msg f f b
+                        otherwise -> return ()
+                
+                outMsgProc :: (Msg, Map.Map String Chat) -> IO ()
+                outMsgProc (msg, m) = do
+                    let to = chatName msg
+                        c = m Map.! to
+                    send con (Message Nothing (Just to) (msgText msg))
+                    addMsg c $ show msg
+                
+                printMsg :: (Msg, Map.Map String Chat) -> IO ()
+                printMsg (msg, m) = do
+                    let to = chatName msg
+                        c = m Map.! to
+                    addMsg c $ show msg
+                
+                showChat :: String -> IO ()
+                showChat name = do
+                    fireAddChat name
+                    fireShowChat' name
+                    
+                showChat' :: (String, Map.Map String Chat) -> IO ()
+                showChat' (name, m) = do
+                    let chat = m Map.! name
+                    ret <- notebookGetNPages chats
+                    vis <- get chats widgetVisible
+                    if or [(ret == 0), (not vis)]
+                        then widgetShowAll chWindow
+                        else return ()
+                    ind <- notebookPageNum chats chat
+                    case ind of
+                        Just i -> notebookSetCurrentPage chats i
+                        Nothing -> do
+                            i <- notebookAppendPage chats chat name
+                            widgetShowAll chat
+                            notebookSetCurrentPage chats i
+            reactimate $ (addChat <%> eAddChat) `union` (showChat <$> eShowChat) `union` (showChat' <%> eShowChat') `union` (printMsg <%> ePrintMsg) `union` (outMsgProc <%> eOutMsg) `union` (inMsgProc <$> eInMsg)
     network <- compile networkDescription
     actuate network
     widgetShowAll window
     forkIO $ do
-        recvMsgLoop h fireMsgHandler
---    mainGUI
+        recvMsgLoop (receive con) fireInMsg
     return ()
-
-sendMsg :: Handle -> String -> String -> IO ()
-sendMsg h to msg = do
-    hSend h $ "<message to='" ++ to ++ "'><body>" ++ msg ++ "</body></message>"
-
-tmpPrint :: ChatRequest -> IO ()
-tmpPrint (s, ms) = case ms of
-    Nothing -> return ()
-    Just msg -> putStrLn $ s ++ ": " ++ msg
 
 rTuple :: a -> b -> (b, a)
 rTuple x y = (y, x)
@@ -260,210 +253,12 @@ onDoubleClick list treeview fireAction = do
     let s = head  (head sel)
     v <- Model.listStoreGetValue list s
     fireAction v
-    --putStrLn $ "selected " ++ v
 
-recvMsgLoop :: Handle -> (ChatRequest -> IO ()) -> IO ()
-recvMsgLoop h fire = recvMsgLoop' h fire ""
-
-recvMsgLoop' :: Handle -> (ChatRequest -> IO ()) -> String -> IO ()
-recvMsgLoop' h fire s = do
-    b <- hIsClosed h
-    if b
-        then
-            return ()
-        else do
-            input <- hGetInput h
-            let (els', ms') = saxParse "" $ s ++ input
-                s' = case ms' of
-                    Just js -> js
-                    Nothing -> ""
-            parseMsgStream els' fire
-            recvMsgLoop' h fire s'
-
-getAttr :: String -> [Attribute] -> String
-getAttr at (x:xs) = case x of
-    (N at, AttValue [Left s]) -> s
-    otherwise -> getAttr at xs
-
-parseBody :: [SaxElement] -> String -> (ChatRequest -> IO ()) -> IO ()
-parseBody (x:xs) from fire = do
-    case x of
-        (SaxCharData s) -> do
-            let from' = takeWhile (/= '/') from
-            fire $ (from', Just (from' ++ ": " ++ s))
-        (SaxElementClose "body") -> return ()
-        otherwise -> parseBody xs from fire
-
-parseMsg :: [SaxElement] -> String -> (ChatRequest -> IO ()) -> IO ()
-parseMsg (x:xs) from fire = do
-    case x of
-        (SaxElementOpen "body" _) -> parseBody xs from fire
-        (SaxElementClose "message") -> return ()
-        otherwise -> parseMsg xs from fire
-
-parseMsgStream :: [SaxElement] -> (ChatRequest -> IO ()) -> IO ()
-parseMsgStream [] _ = return ()
-parseMsgStream (x:xs) fire = do
-    case x of
-        (SaxElementOpen "message" attrs) -> parseMsg xs (getAttr "from" attrs) fire
-        otherwise -> return ()
-    parseMsgStream xs fire
-
-time :: Int
-time = 1000
-
-portNum :: PortNumber
-portNum = 5222
-
-data Result = Success | Failure
-
-hWaitForever :: Handle -> IO ()
-hWaitForever h = do
-    flag <- hWaitForInput h time
-    if flag then return () else hWaitForever h
-
-hGetInput' :: Handle -> String -> IO String
-hGetInput' h acc = do
-    flag <- hReady h
-    if flag
-        then do
-            c <- hGetChar h
-            hGetInput' h $ acc ++ [c]
-        else
-            return acc
-
-hGetInput :: Handle -> IO String
-hGetInput h = do
-    hWaitForever h
-    s <- hGetInput' h ""
-    putStrLn $ "<- " ++ s
-    return s
-
-hSend :: Handle -> String -> IO ()
-hSend h s = do
-    putStrLn $ "-> " ++ s
-    hPutStr h s
-    hFlush h
-
-getHead' :: Handle -> String -> IO String
-getHead' h acc = do
-    s <- hGetInput h
-    let acc' = acc ++ s
-    if (isInfixOf "</stream:features>" s) then return acc' else getHead' h acc'
-
-getHead :: Handle -> IO String
-getHead h = getHead' h ""
-
-getMech :: [SaxElement] -> [String]
-getMech els = case els of
-    (SaxElementOpen "mechanism" _ : SaxCharData d : SaxElementClose "mechanism" : els') -> d : getMech els'
-    (_ : els') -> getMech els'
-    [] -> []
-
-finishLogin :: Handle -> Session Result
-finishLogin h = do
-    s <- liftIO $ hGetInput h
-    if (s == "<success xmlns='urn:ietf:params:xml:ns:xmpp-sasl'/>") then return Success else return Failure
-
-parseLogin :: String -> Maybe String
-parseLogin s = let (els, _) = saxParse "" s in
-    case els of
-        ([SaxElementOpen "challenge" _ , SaxCharData d , SaxElementClose "challenge"]) -> Just d
-        otherwise -> Nothing
-
-
-loopLogin :: Handle -> Session Result
-loopLogin h = do
-    ans <- liftIO $ hGetInput h
-    let ans' = parseLogin ans
-    case ans' of
-        Just s -> do
-            (text, pr) <- step64 $ fromString s
-            let out = "<response xmlns='urn:ietf:params:xml:ns:xmpp-sasl'>" ++ (toString text) ++ "</response>"
-            liftIO $ hSend h out
-            case pr of
-                Complete -> finishLogin h
-                NeedsMore -> loopLogin h
-        Nothing -> return Failure
-
-
-containsJID :: [Attribute] -> Bool
-containsJID [] = False
-containsJID (x:xs) = case x of
-    (N "jid", _) -> True
-    otherwise -> containsJID xs
-
-
-isJIDItem :: SaxElement -> Bool
-isJIDItem el = case el of
-    (SaxElementOpen "item" attrs) -> containsJID attrs
-    (SaxElementTag "item" attrs) -> containsJID attrs
-    otherwise -> False
-
-
-
-getJID' :: [Attribute] -> String
-getJID' (x:xs) = case x of
-    (N "jid", AttValue [Left s]) -> s
-    otherwise -> getJID' xs
-
-getJID :: SaxElement -> String
-getJID el = case el of
-    (SaxElementOpen "item" attrs) -> getJID' attrs
-    (SaxElementTag "item" attrs) -> getJID' attrs
-
-getJIDs :: [SaxElement] -> [String]
-getJIDs l = map getJID $ filter isJIDItem l
-    
-
-getRoster :: Handle -> IO [String]
-getRoster h = do
-    hSend h "<iq type = \"get\"><query xmlns=\"jabber:iq:roster\"/></iq>"
-    s <- hGetInput h
-    let (ans, _) = saxParse "" s
-    return $ getJIDs ans
-
-logout :: Handle -> IO ()
-logout h = hSend h "</stream:stream>"
-
-login :: String -> String -> String -> String -> IO (Handle, [String])
-login username password hostname server = do
-    putStrLn $ "username: " ++ username ++ "\nserver: " ++ server
-    h <- connectTo server $ PortNumber portNum
-    hSend h "<stream:stream to=\"jabber.ru\" xmlns=\"jabber:client\" xmlns:stream=\"http://etherx.jabber.org/streams\" version=\"1.0\">"
-    hd <- getHead h
-    let (els, _) = saxParse "" hd
-        mechs = filter (/= "SCRAM-SHA-1") (getMech els)
-    runSASL $ do
-        mmech <- clientSuggestMechanism $ map (Mechanism . fromString) mechs
-        case mmech of
-      --Nothing -> return "err"
-            Just m -> runClient m $ do
-                let mechName = toString m' where Mechanism m' = m
-                setProperty PropertyAuthID $ fromString username
-                setProperty PropertyPassword $ fromString password
-                setProperty PropertyService $ fromString "xmpp"
-                setProperty PropertyHostname $ fromString hostname
-                (text, pr) <- step64 $ fromString ""
-                let out = "<auth xmlns='urn:ietf:params:xml:ns:xmpp-sasl' mechanism='" ++ mechName ++ "'>" ++ (toString text) ++ "</auth>"
-                liftIO $ hSend h out
-                case pr of
-                    Complete -> finishLogin h
-                    NeedsMore -> loopLogin h
-        --return "ok"
-    --return "ok"
-    hSend h "<stream:stream to=\"jabber.ru\" xmlns=\"jabber:client\" xmlns:stream=\"http://etherx.jabber.org/streams\" version=\"1.0\">"
-    hGetInput h
-    hSend h "<iq type='set' id='bund_2'><bind xmlns='urn:ietf:params:xml:ns:xmpp-bind'><resource>test</resource></bind></iq>"
-    hGetInput h
-    hSend h "<iq type=\"set\" id=\"9747\"><session xmlns=\"urn:ietf:params:xml:ns:xmpp-session\" /></iq>"
-    hGetInput h
-    roster <- getRoster h
-    hSend h "<presence><show/></presence>"
---    hSend h "</stream:stream>"
-    return (h, roster)
-
---main = do
-
---  login "" "" "jabber.ru" "jabber.ru"
---  return ()
+recvMsgLoop :: IO Stanza -> (Stanza -> IO ()) -> IO ()
+recvMsgLoop recv fire = do
+    stanza <- recv
+    case stanza of
+        CloseStream -> return ()
+        otherwise -> do
+            fire stanza
+            recvMsgLoop recv fire
