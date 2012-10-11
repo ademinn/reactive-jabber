@@ -1,6 +1,8 @@
 module Network.Parser
 ( Node (..)
 , parseSAXStream
+, findChild
+, findAttribute
 ) where
 
 --import qualified Data.ByteString.Lazy as B
@@ -20,6 +22,28 @@ data Node tag text
     | End
 
 type ParseStateM tag text a = State [SAXEvent tag text] a --[Node tag text]
+
+headSafe :: [a] -> Maybe a
+headSafe [] = Nothing
+headSafe (x:_) = Just x
+
+getTag :: Node tag text -> Maybe tag
+getTag (Element tag _ _) = Just tag
+getTag (OpenTag tag _) = Just tag
+getTag (CloseTag tag) = Just tag
+getTag (Text _) = Nothing
+getTag End = Nothing
+
+cmpTagNode :: (Eq tag) => tag -> Node tag text -> Bool
+cmpTagNode t1 node = case (getTag node) of
+    Just t2 -> t1 == t2
+    Nothing -> False
+
+findChild :: (Eq tag) => tag -> [Node tag text] -> Maybe (Node tag text)
+findChild t xs = headSafe $ dropWhile (not . cmpTagNode t) xs
+
+findAttribute :: (Eq tag) => tag -> [(tag, text)] -> Maybe (tag, text)
+findAttribute t xs = headSafe $ dropWhile ((t /=) . fst) xs
 
 pollNext :: ParseStateM tag text (Maybe (SAXEvent tag text))
 pollNext = state $ \s -> case s of

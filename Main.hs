@@ -111,7 +111,7 @@ main = do
 
 quitChat :: Connection -> IO ()
 quitChat con = do
-    send con CloseStream
+    send con EndStream
     mainQuit
 
 mainLoop :: Connection -> [String] -> IO ()
@@ -258,7 +258,7 @@ recvMsgLoop :: IO Stanza -> (Stanza -> IO ()) -> IO ()
 recvMsgLoop recv fire = do
     stanza <- recv
     case stanza of
-        CloseStream -> return ()
+        EndStream -> return ()
         otherwise -> do
             fire stanza
             recvMsgLoop recv fire
