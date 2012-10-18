@@ -53,7 +53,7 @@ pollNext = state $ \s -> case s of
 peekNext :: ParseStateM tag text (Maybe (SAXEvent tag text))
 peekNext = state $ \s -> case s of
                             [] -> (Nothing, [])
-                            x:xs -> (Just x, xs)
+                            x:xs -> (Just x, s)
 
 parseSAXStream :: (Eq tag) => [tag] -> [SAXEvent tag text] -> [Node tag text]
 parseSAXStream ls events = evalState (parseState ls) events
