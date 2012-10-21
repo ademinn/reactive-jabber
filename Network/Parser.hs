@@ -9,6 +9,9 @@ module Network.Parser
 import Text.XML.Expat.SAX
 import Control.Monad.State.Lazy
 import Control.Applicative
+import qualified Data.ByteString.Lazy as L
+
+type LString = L.ByteString
 
 data Node tag text
     = Element
@@ -21,7 +24,14 @@ data Node tag text
     | CloseTag tag
     | End
 
-type ParseStateM tag text a = State [SAXEvent tag text] a --[Node tag text]
+instance (Show tag, Show text) => Show (Node tag text) where
+    show (Element n a c) = (show n) ++ ": " ++ (show a) ++ "| " ++ (show c)
+    show (Text text) = show text
+    show (OpenTag n a) = (show n) ++ ": " ++ (show a)
+    show (CloseTag n) = show n
+    show End = "End"
+
+type ParseStateM tag text a = State (LString, [(SAXEvent tag text, XMLParseLocation)]) a --[Node tag text]
 
 headSafe :: [a] -> Maybe a
 headSafe [] = Nothing
@@ -46,26 +56,30 @@ findAttribute :: (Eq tag) => tag -> [(tag, text)] -> Maybe (tag, text)
 findAttribute t xs = headSafe $ dropWhile ((t /=) . fst) xs
 
 pollNext :: ParseStateM tag text (Maybe (SAXEvent tag text))
-pollNext = state $ \s -> case s of
-                            [] -> (Nothing, [])
-                            x:xs -> (Just x, xs)
+pollNext = state $ \(src, s) -> case s of
+                                    [] -> (Nothing, (src, []))
+                                    (x, XMLParseLocation _ _ _ c):xs -> (Just x, (L.drop c src, xs))
 
 peekNext :: ParseStateM tag text (Maybe (SAXEvent tag text))
-peekNext = state $ \s -> case s of
-                            [] -> (Nothing, [])
-                            x:xs -> (Just x, s)
+peekNext = state $ \(src, s) -> case s of
+                            [] -> (Nothing, (src, []))
+                            (x, _):xs -> (Just x, (src, s))
 
-parseSAXStream :: (Eq tag) => [tag] -> [SAXEvent tag text] -> [Node tag text]
-parseSAXStream ls events = evalState (parseState ls) events
+--parseXMLByteString :: (Eq tag) => [tag] -> LString -> [Node tag text]
+--parseXMLByteString
 
-parseState :: (Eq tag) => [tag] -> ParseStateM tag text [Node tag text]
+
+parseSAXStream :: (Eq tag, GenericXMLString text, GenericXMLString tag) => [tag] -> LString -> [Node tag text]
+parseSAXStream ls stream = evalState (parseState ls) (stream, parseLocations (ParseOptions Nothing Nothing) stream)
+
+parseState :: (Eq tag, GenericXMLString text, GenericXMLString tag) => [tag] -> ParseStateM tag text [Node tag text]
 parseState ls = do
     el <- parseElement ls
     case el of
         End -> return [el]
         otherwise -> (el:) <$> parseState ls
 
-getChildren :: (Eq tag) => tag -> [tag] -> ParseStateM tag text [Node tag text]
+getChildren :: (Eq tag, GenericXMLString text, GenericXMLString tag) => tag -> [tag] -> ParseStateM tag text [Node tag text]
 getChildren p ls = do
     el <- peekNext
     case el of
@@ -76,7 +90,10 @@ getChildren p ls = do
                     return []
                 otherwise -> (:) <$> parseElement ls <*> getChildren p ls
 
-parseElement :: (Eq tag) => [tag] -> ParseStateM tag text (Node tag text)
+backupState :: (GenericXMLString text, GenericXMLString tag) => ParseStateM tag text ()
+backupState = state $ \(src, _) -> ((), (src, parseLocations (ParseOptions Nothing Nothing) src))
+
+parseElement :: (Eq tag, GenericXMLString text, GenericXMLString tag) => [tag] -> ParseStateM tag text (Node tag text)
 parseElement ls = do
     el <- pollNext
     case el of
@@ -94,6 +111,9 @@ parseElement ls = do
                         return $ CloseTag name
                 CharacterData t -> do
                     return $ Text t
+                FailDocument _ -> do
+                    backupState
+                    parseElement ls
                 otherwise -> parseElement ls
 
 --    s <- get

@@ -10,23 +10,26 @@ import Control.Monad.IO.Class
 import Graphics.UI.Gtk
 import Graphics.UI.Gtk.ModelView as Model
 import Network.XMPP
+import Network.XMPPTypes
+import qualified Data.ByteString as B
+import qualified Data.ByteString.Char8 as C
 
 data Chat = Chat    { userName :: String
                     , chatPanel :: VPaned
-                    , addMsg :: String -> IO ()
+                    , addMsg :: BString -> IO ()
                     }
 
-data Msg = Msg  { chatName :: String
+data MsgT = MsgT  { chatName :: String
                 , sender :: String
-                , msgText :: String
+                , msgText :: BString
                 }
 
-instance Show Msg where
-    show (Msg _ s t) = s ++ ": " ++ t
+instance Show MsgT where
+    show (MsgT _ s t) = s ++ ": " ++ (showB t)
 
 type ChatRequest = (String, Maybe String)
 
-chatNew :: String -> String -> (Msg -> IO ()) -> IO Chat
+chatNew :: String -> String -> (MsgT -> IO ()) -> IO Chat
 chatNew s name fire = do
     outputWdgt <- textViewNew
     tb <- textViewGetBuffer outputWdgt
@@ -40,8 +43,8 @@ chatNew s name fire = do
                 liftIO $ do
                     stIt <- startBuf itb
                     enIt <- endBuf itb
-                    out <- textBufferGetText itb stIt enIt False
-                    fire $ Msg s name out
+                    out <- textBufferGetByteString itb stIt enIt False
+                    fire $ MsgT s name out
                     textBufferSetText itb ""
                 return True
             else return False
@@ -56,10 +59,10 @@ startBuf tb = textBufferGetIterAtOffset tb 0
 endBuf :: TextBuffer -> IO TextIter
 endBuf tb = textBufferGetIterAtOffset tb (-1)
 
-appendText :: TextBuffer -> String -> IO ()
+appendText :: TextBuffer -> BString -> IO ()
 appendText tb msg = do
     ti <- endBuf tb
-    textBufferInsert tb ti (msg ++ "\n")
+    textBufferInsertByteString tb ti (msg `B.append` (C.pack "\n"))
 
 instance GObjectClass Chat where
     toGObject = toGObject . chatPanel
@@ -99,9 +102,11 @@ main = do
                 loginText <- entryGetText loginEntry
                 passwordText <- entryGetText passwordEntry
                 serverText <- entryGetText serverEntry
+                putStrLn $ tail $ show $ ((C.pack loginText) :: BString)
+                putStrLn $ loginText ++ passwordText ++ serverText
+                (stream, roster, con) <- login (C.pack serverText) (C.pack loginText) (C.pack passwordText) (\_ -> return ()) --serverText
                 widgetDestroy loginDialog
-                (con, roster) <- login loginText passwordText serverText serverText
-                mainLoop con roster
+                mainLoop (loginText) stream (map showB roster) con
             otherwise -> do
                 widgetDestroy loginDialog
                 mainQuit
@@ -114,9 +119,9 @@ quitChat con = do
     send con EndStream
     mainQuit
 
-mainLoop :: Connection -> [String] -> IO ()
-mainLoop con roster = do
-    let name = username con
+mainLoop :: String -> [Stanza] -> [String] -> Connection -> IO ()
+mainLoop name stream roster con = do
+    --let name = username con
     window <- windowNew
     chWindow <- windowNew
     chats <- notebookNew
@@ -168,23 +173,23 @@ mainLoop con roster = do
                 inMsgProc :: Stanza -> IO ()
                 inMsgProc stanza = do
                     case stanza of
-                        Message (Just f) _ b -> do
-                            fireAddChat f
-                            firePrintMsg $ Msg f f b
+                        Msg (Message (Just f) _ b) -> do
+                            fireAddChat (showB f)
+                            firePrintMsg $ MsgT (showB f) (showB f) b
                         otherwise -> return ()
                 
-                outMsgProc :: (Msg, Map.Map String Chat) -> IO ()
+                outMsgProc :: (MsgT, Map.Map String Chat) -> IO ()
                 outMsgProc (msg, m) = do
                     let to = chatName msg
                         c = m Map.! to
-                    send con (Message Nothing (Just to) (msgText msg))
-                    addMsg c $ show msg
+                    send con (Msg $ Message Nothing (Just (C.pack to)) (msgText msg))
+                    addMsg c $ showBMsg msg
                 
-                printMsg :: (Msg, Map.Map String Chat) -> IO ()
+                printMsg :: (MsgT, Map.Map String Chat) -> IO ()
                 printMsg (msg, m) = do
                     let to = chatName msg
                         c = m Map.! to
-                    addMsg c $ show msg
+                    addMsg c $ showBMsg msg
                 
                 showChat :: String -> IO ()
                 showChat name = do
@@ -209,10 +214,16 @@ mainLoop con roster = do
             reactimate $ (addChat <%> eAddChat) `union` (showChat <$> eShowChat) `union` (showChat' <%> eShowChat') `union` (printMsg <%> ePrintMsg) `union` (outMsgProc <%> eOutMsg) `union` (inMsgProc <$> eInMsg)
     network <- compile networkDescription
     actuate network
-    widgetShowAll window
     forkIO $ do
-        recvMsgLoop (receive con) fireInMsg
+        sequence $ map (postGUIAsync . fireInMsg) $ stream
+        return ()
+--        recvMsgLoop stream fireInMsg
+    widgetShowAll window
+        --recvMsgLoop (receive con) fireInMsg
     return ()
+
+showBMsg :: MsgT -> BString
+showBMsg (MsgT _ f t) = (C.pack (f ++ ": ")) `B.append` t
 
 rTuple :: a -> b -> (b, a)
 rTuple x y = (y, x)
@@ -254,11 +265,19 @@ onDoubleClick list treeview fireAction = do
     v <- Model.listStoreGetValue list s
     fireAction v
 
-recvMsgLoop :: IO Stanza -> (Stanza -> IO ()) -> IO ()
-recvMsgLoop recv fire = do
-    stanza <- recv
-    case stanza of
-        EndStream -> return ()
-        otherwise -> do
-            fire stanza
-            recvMsgLoop recv fire
+recvMsgLoop :: [Stanza] -> (Stanza -> IO ()) -> IO ()
+recvMsgLoop [] _ = return ()
+recvMsgLoop (x:xs) fire = do
+--    threadsEnter
+    threadDelay 1000
+    postGUIAsync . fire $ x
+--    threadsLeave
+    recvMsgLoop xs fire
+--recvMsgLoop :: IO Stanza -> (Stanza -> IO ()) -> IO ()
+--recvMsgLoop recv fire = do
+--    stanza <- recv
+--    case stanza of
+--        EndStream -> return ()
+--        otherwise -> do
+--            fire stanza
+--            recvMsgLoop recv fire
