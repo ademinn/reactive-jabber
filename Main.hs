@@ -51,7 +51,7 @@ chatNew s name fire = do
     mainWdgt <- vPanedNew
     panedAdd1 mainWdgt outputWdgt
     panedAdd2 mainWdgt inputWdgt
-    return $ Chat s mainWdgt (appendText tb)
+    return $ Chat s mainWdgt (postGUIAsync . appendText tb)
 
 startBuf :: TextBuffer -> IO TextIter
 startBuf tb = textBufferGetIterAtOffset tb 0
@@ -213,14 +213,19 @@ mainLoop name stream roster con = do
                             notebookSetCurrentPage chats i
             reactimate $ (addChat <%> eAddChat) `union` (showChat <$> eShowChat) `union` (showChat' <%> eShowChat') `union` (printMsg <%> ePrintMsg) `union` (outMsgProc <%> eOutMsg) `union` (inMsgProc <$> eInMsg)
     network <- compile networkDescription
-    actuate network
-    forkIO $ do
-        sequence $ map (postGUIAsync . fireInMsg) $ stream
-        return ()
 --        recvMsgLoop stream fireInMsg
     widgetShowAll window
+    forkIO $ do
+        actuate network
+        sequence $ map (foo fireInMsg) $ stream
+        return ()
         --recvMsgLoop (receive con) fireInMsg
     return ()
+
+foo :: (Stanza -> IO ()) -> Stanza -> IO ()
+foo fire s = do
+    putStrLn "1"
+    fire s
 
 showBMsg :: MsgT -> BString
 showBMsg (MsgT _ f t) = (C.pack (f ++ ": ")) `B.append` t
