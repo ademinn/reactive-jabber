@@ -57,6 +57,9 @@ data InnerStanza
     | Iq Iq
     | IMsg Message
     | IPresence
+    | IRequest JID
+    | IRefuse JID
+    | IConfirm JID
     | Failure
     deriving (Eq, Show)
 
@@ -112,11 +115,15 @@ getRoster :: [XMPPNode] -> Query
 getRoster ls = RosterList $ map getJID ls
 
 parseIq :: XMPPNode -> Maybe Iq
-parseIq (Element _ _ [Element name attrs xs]) = case (showB name) of
+parseIq (Element _ at [Element name attrs xs]) = case (showB name) of
     "query" ->  case findAttribute (C.pack "xmlns") attrs of
         Just (_, t) -> if (showB t) == "jabber:iq:roster"
             then
-                Just . Q . getRoster $ xs
+                case findAttribute (C.pack "type") at of
+                    Just (_, res) -> case showB res of
+                        "result" -> Just . Q . getRoster $ xs
+                        otherwise -> Nothing
+                    Nothing -> Nothing
             else
                 Just Unknown1
         Nothing -> Just Unknown2
@@ -150,7 +157,13 @@ elemToXMPP node@(Element name attrs c) = case (showB name) of
         otherwise -> Just . IAuth . ISuccess . C.pack $ ""
     "message" -> Just . IMsg $ getMessage node
     "iq" -> Iq <$> (parseIq node)
-    "presence" -> Just IPresence
+    "presence" -> case findAttribute (C.pack "type") attrs of
+        Just (_, res) -> case showB res of
+            "subscribe" -> IRequest . snd <$> findAttribute (C.pack "from") attrs
+            "subscribed" -> IConfirm . snd <$> findAttribute (C.pack "from") attrs
+            "unsubscribed" -> IRefuse . snd <$> findAttribute (C.pack "from") attrs
+            otherwise -> Nothing
+        Nothing -> Just IPresence
     "failure" -> Just Failure
     otherwise -> Nothing
 elemToXMPP _ = Nothing

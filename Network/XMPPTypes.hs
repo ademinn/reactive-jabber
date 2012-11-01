@@ -17,7 +17,7 @@ type LString = L.ByteString
 type BString = B.ByteString
 
 showB :: BString -> String
-showB = init . tail . show
+showB = C.unpack --init . tail . show
 
 toStrict :: LString -> BString
 toStrict = B.concat . L.toChunks

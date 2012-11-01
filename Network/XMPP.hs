@@ -1,5 +1,6 @@
 module Network.XMPP
 ( Stanza (..)
+, Subscribe (..)
 , Connection (..)
 , login
 ) where
@@ -18,6 +19,7 @@ import Text.XML.Expat.SAX
 import Control.Applicative
 import Control.Monad.State.Lazy
 import Control.Concurrent
+import qualified Control.Exception as E
 import Data.Maybe
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Char8 as C
@@ -34,7 +36,30 @@ portNum = 5222
 data Stanza
     = Msg Message
     | Roster [JID]
+    | Sub Subscribe
     | EndStream
+
+data Subscribe
+    = Request
+        { from :: Maybe JID
+        , to :: Maybe JID
+        }
+    | Confirm
+        { from :: Maybe JID
+        , to :: Maybe JID
+        }
+    | Refuse
+        { from :: Maybe JID
+        , to :: Maybe JID
+        }
+
+showJust :: (Show a) => Maybe a -> String
+showJust Nothing = ""
+showJust (Just x) = show x
+
+showAttr :: String -> Maybe JID -> String
+showAttr _ Nothing = ""
+showAttr s (Just x) = " " ++ s ++ "='" ++ (showB x) ++ "'"
 
 instance Show Stanza where
     show (Msg (Message f t b)) = "<message" ++ f' ++ t' ++ "><body>" ++ (showB b) ++ "</body></message>"
@@ -46,10 +71,17 @@ instance Show Stanza where
                     Nothing -> ""
                     Just s -> " to='" ++ (showB s) ++ "'"
     show (Roster ls) = show $ map showB ls
+    show (Sub(Request f t)) = "<presence type='subscribe'" ++ (showAttr "from" f) ++ (showAttr "to" t) ++ "/>"
+    show (Sub(Confirm f t)) = "<presence type='subscribed'" ++ (showAttr "from" f) ++ (showAttr "to" t) ++ "/>"
+    show (Sub(Refuse f t)) = "<presence type='unsubscribed'" ++ (showAttr "from" f) ++ (showAttr "to" t)
+        ++ "/><iq type='set'><query xmlns='jabber:iq:roster'><item" ++ (showAttr "jid" t) ++ " subscription='remove'/></query></iq>"
     show EndStream = "</stream:stream>"
 
 data Connection = Connection    { send :: Stanza -> IO () 
                                 }
+
+nullConnection :: Connection
+nullConnection = Connection (\_ -> return ())
 
 data Auth = Challenge | Success
 
@@ -214,6 +246,9 @@ toStanzaElement :: InnerStanza -> Maybe Stanza
 toStanzaElement (IMsg msg) = Just $ Msg msg
 toStanzaElement (Iq (Q (RosterList ls))) = Just $ Roster ls
 toStanzaElement CloseStream = Just EndStream
+toStanzaElement (IRequest jid) = Just . Sub $ Request (Just jid) Nothing
+toStanzaElement (IConfirm jid) = Just . Sub $ Confirm (Just jid) Nothing
+toStanzaElement (IRefuse jid) = Just . Sub $ Refuse (Just jid) Nothing
 toStanzaElement _ = Nothing
 
 toStanza :: [InnerStanza] -> [Stanza]
@@ -228,8 +263,18 @@ hSend h bs = do
     B.hPut h bs
     hFlush h
 
-login :: Server -> Name -> Password -> (Connection -> IO ()) -> IO ([Stanza], [JID], Connection) --XMPPState IO ()
+handleError :: IOError -> IO ([Stanza], [JID], Connection)
+handleError _ = do
+    putStrLn "Error handled"
+    return ([], [], nullConnection)
+
+login :: Server -> Name -> Password -> (Connection -> IO ()) -> IO ([Stanza], [JID], Connection)
 login server name password callback = do
+    login' server name password
+    --E.catch (login' server name password) handleError
+
+login' :: Server -> Name -> Password -> IO ([Stanza], [JID], Connection) --XMPPState IO ()
+login' server name password = do
     putStrLn . showB $ name `B.append` server `B.append` password
     h <- connectTo (showB server) (PortNumber portNum)
     hSetBuffering h NoBuffering
@@ -238,11 +283,11 @@ login server name password callback = do
     --let input2 = parse (ParseOptions Nothing Nothing) input1
     let input3 = parseSAXStream [C.pack "stream:stream"] input1
     let input = toXMPP input3
---    forkIO $ do
---        LC.putStrLn input1
+    forkIO $ do
+        LC.putStrLn input1
         --LC.putStrLn input1
---        sequence $ map (putStrLn . show) input3
---        return ()
+--        sequence $ map (putStrLn . show) input
+        return ()
     --input <- toXMPP . parseSAXStream [C.pack "stream:stream"] . parse (ParseOptions Nothing Nothing) <$> L.hGetContents h
     let authenticate :: XMPPState IO ([Stanza], [JID])
         authenticate = do

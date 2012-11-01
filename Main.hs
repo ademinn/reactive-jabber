@@ -4,6 +4,7 @@ import Reactive.Banana.Switch
 import Reactive.Banana.Frameworks
 import System.IO
 import System.Glib.Types
+import qualified Data.List as List
 import qualified Data.Map as Map
 import Control.Concurrent
 import Control.Monad.IO.Class
@@ -106,7 +107,7 @@ main = do
                 putStrLn $ loginText ++ passwordText ++ serverText
                 (stream, roster, con) <- login (C.pack serverText) (C.pack loginText) (C.pack passwordText) (\_ -> return ()) --serverText
                 widgetDestroy loginDialog
-                mainLoop (loginText) stream (map showB roster) con
+                mainLoop (loginText ++ "@" ++ serverText) stream (map showB roster) con
             otherwise -> do
                 widgetDestroy loginDialog
                 mainQuit
@@ -131,10 +132,106 @@ mainLoop name stream roster con = do
                     ]
     (inMsg, fireInMsg) <- newAddHandler
     (doubleClick, fireDoubleClick) <- newAddHandler
-    treeview <- listTreeView name roster fireDoubleClick
+    vBox <- vBoxNew False 5
+    (treeview, list) <- listTreeView name roster -- fireDoubleClick
+    let getSel = getSelected list treeview
+        addContact jid = do
+            ls <- listStoreToList list
+            if jid `notElem` ls
+                then do
+                    listStoreAppend list jid
+                    return ()
+                else
+                    return ()
+        removeContact jid = do
+            ls <- listStoreToList list
+            case List.elemIndex jid ls of
+                Just i -> do
+                    listStoreRemove list i
+                    send con $ Sub (Refuse (Just $ C.pack name) (Just $ C.pack jid))
+                Nothing -> return ()
+    
+    treeview `on` buttonPressEvent $ do
+        click <- eventClick
+        if click == DoubleClick
+            then do
+                liftIO $ do
+                    s <- getSel
+                    fireDoubleClick s
+                    --onDoubleClick list treeview fireAction
+                return ()
+            else
+                return ()
+        return False
+    boxPackStart vBox treeview PackGrow 0
+    
+    addDialog <- dialogNew
+    addUpper <- dialogGetUpper addDialog
+    addBox <- hBoxNew False 5
+    addLabel <- labelNew $ Just "JID"
+    boxPackStart addBox addLabel PackNatural 0
+    addEntry <- entryNew
+    boxPackStart addBox addEntry PackGrow 0
+    boxPackStart addUpper addBox PackGrow 5
+    dialogAddButton addDialog "Ok" ResponseOk
+    dialogAddButton addDialog "Cancel" ResponseCancel
+    widgetShowAll addUpper
+    addDialog `on` deleteEvent $ do
+        liftIO $ do
+            dialogResponse addDialog ResponseCancel
+            widgetHideAll addDialog
+        return True
+    
+    addDialog `on` response $ \_ -> do
+        widgetHideAll addDialog
+    
+    addButton <- buttonNewWithLabel "Add contact"
+    addButton `on` buttonActivated $ do
+        widgetShowAll addDialog
+        res <- dialogRun addDialog
+        if res == ResponseOk
+            then do
+                jid <- entryGetText addEntry
+                send con $ Sub (Request (Just $ C.pack name) (Just $ C.pack jid))
+            else
+                return ()
+    
+    boxPackStart vBox addButton PackNatural 0
+    
+    removeDialog <- dialogNew
+    removeUpper <- dialogGetUpper removeDialog
+    removeLabel <- labelNew $ Just "Nothing"
+    boxPackStart removeUpper removeLabel PackGrow 5
+    windowSetTransientFor removeDialog window
+    windowSetModal removeDialog True
+    dialogAddButton removeDialog "Yes" ResponseYes
+    dialogAddButton removeDialog "No" ResponseNo
+    widgetShowAll removeUpper
+    
+    removeDialog `on` deleteEvent $ do
+        liftIO $ do
+            dialogResponse removeDialog ResponseNo
+            widgetHideAll removeDialog
+        return True
+    
+    removeDialog `on` response $ \_ -> do
+        widgetHideAll removeDialog
+        
+    removeButton <- buttonNewWithLabel "Remove contact"
+    removeButton `on` buttonActivated $ do
+        jid <- getSel
+        labelSetText removeLabel $ "Remove " ++ jid ++ " from roster?"
+        widgetShowAll removeDialog
+        res <- dialogRun removeDialog
+        case res of
+            ResponseYes -> removeContact jid
+            otherwise -> return ()
+    
+    boxPackStart vBox removeButton PackNatural 0
+    
     set window  [ windowDefaultWidth := 100
                 , windowDefaultHeight := 200
-                , containerChild := treeview
+                , containerChild := vBox
                 ]
     window `on` deleteEvent $ do
         liftIO $ do
@@ -146,6 +243,31 @@ mainLoop name stream roster con = do
     chWindow `on` deleteEvent $ do
         liftIO $ widgetHideAll chWindow
         return True
+
+    requestDialog <- dialogNew
+    requestUpper <- dialogGetUpper requestDialog
+    requestLabel <- labelNew $ Just "Nobody"
+    boxPackStart requestUpper requestLabel PackGrow 5
+    windowSetTransientFor requestDialog window
+    windowSetModal requestDialog True
+    dialogAddButton requestDialog "Yes" ResponseYes
+    dialogAddButton requestDialog "No" ResponseNo
+    widgetShowAll requestUpper
+    
+    requestDialog `on` deleteEvent $ do
+        liftIO $ do
+            dialogResponse requestDialog ResponseNo
+            widgetHideAll requestDialog
+        return True
+    
+    requestDialog `on` response $ \_ -> do
+        widgetHideAll requestDialog
+    
+    let showRequest :: JID -> IO ResponseId
+        showRequest jid = do
+            labelSetText requestLabel $ "Authorize " ++ (C.unpack jid) ++ "?"
+            widgetShowAll requestDialog
+            dialogRun requestDialog
 
     let networkDescription :: Frameworks t => Moment t ()
         networkDescription = do
@@ -176,6 +298,18 @@ mainLoop name stream roster con = do
                         Msg (Message (Just f) _ b) -> do
                             fireAddChat (showB f)
                             firePrintMsg $ MsgT (showB f) (showB f) b
+                        Sub (Request (Just jid) _) -> do
+                            res <- postGUISync $ showRequest jid
+                            case res of
+                                ResponseYes -> send con . Sub $ Confirm (Just $ C.pack name) (Just jid)
+                                otherwise -> send con . Sub $ Refuse (Just $ C.pack name) (Just jid)
+                            --putStrLn $ show res
+--                            showRequest jid
+                            return ()
+                        Sub (Confirm (Just jid) _) -> do
+                            addContact $ showB jid
+                        Sub (Refuse (Just jid) _) -> do
+                            removeContact $ showB jid
                         otherwise -> return ()
                 
                 outMsgProc :: (MsgT, Map.Map String Chat) -> IO ()
@@ -215,8 +349,8 @@ mainLoop name stream roster con = do
     network <- compile networkDescription
 --        recvMsgLoop stream fireInMsg
     widgetShowAll window
+    actuate network
     forkIO $ do
-        actuate network
         sequence $ map (foo fireInMsg) $ stream
         return ()
         --recvMsgLoop (receive con) fireInMsg
@@ -224,7 +358,7 @@ mainLoop name stream roster con = do
 
 foo :: (Stanza -> IO ()) -> Stanza -> IO ()
 foo fire s = do
-    putStrLn "1"
+    putStrLn . show $ s
     fire s
 
 showBMsg :: MsgT -> BString
@@ -239,8 +373,8 @@ insertSafe (k, v) m = if k `Map.member` m then m else Map.insert k v m
 insertSafe' :: Ord k => k -> Map.Map k k -> Map.Map k k
 insertSafe' k m = insertSafe (k, k) m
 
-listTreeView :: String -> [String] -> (String -> IO ()) -> IO TreeView
-listTreeView title sourceList fireAction = do
+listTreeView :: String -> [String] -> IO (TreeView, ListStore String)
+listTreeView title sourceList = do
     list <- listStoreNew sourceList
     treeview <- Model.treeViewNewWithModel list
     Model.treeViewSetHeadersVisible treeview True
@@ -250,17 +384,25 @@ listTreeView title sourceList fireAction = do
     Model.cellLayoutPackStart col renderer False
     Model.cellLayoutSetAttributes col renderer list
             $ \ind -> [Model.cellText := ind]
+    --listStoreAppend list "append"
     Model.treeViewAppendColumn treeview col
-    treeview `on` buttonPressEvent $ do
-        click <- eventClick
-        if click == DoubleClick
-            then do
-                liftIO $ onDoubleClick list treeview fireAction
-                return ()
-            else
-                return ()
-        return False
-    return treeview
+--    treeview `on` buttonPressEvent $ do
+--        click <- eventClick
+--        if click == DoubleClick
+--            then do
+--                liftIO $ onDoubleClick list treeview fireAction
+--                return ()
+--            else
+--                return ()
+--        return False
+    return (treeview, list)
+
+getSelected :: ListStore a -> TreeView -> IO a
+getSelected list treeView = do
+    tree <- Model.treeViewGetSelection treeView
+    sel <- Model.treeSelectionGetSelectedRows tree
+    let s = head  (head sel)
+    Model.listStoreGetValue list s
 
 onDoubleClick :: ListStore String -> TreeView -> (String -> IO()) -> IO ()
 onDoubleClick list treeview fireAction = do
