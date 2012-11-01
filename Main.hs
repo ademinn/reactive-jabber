@@ -103,8 +103,6 @@ main = do
                 loginText <- entryGetText loginEntry
                 passwordText <- entryGetText passwordEntry
                 serverText <- entryGetText serverEntry
-                putStrLn $ tail $ show $ ((C.pack loginText) :: BString)
-                putStrLn $ loginText ++ passwordText ++ serverText
                 (stream, roster, con) <- login (C.pack serverText) (C.pack loginText) (C.pack passwordText) (\_ -> return ()) --serverText
                 widgetDestroy loginDialog
                 mainLoop (loginText ++ "@" ++ serverText) stream (map showB roster) con

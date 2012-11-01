@@ -273,10 +273,13 @@ login server name password callback = do
     login' server name password
     --E.catch (login' server name password) handleError
 
+startStream :: String -> String
+startStream server = "<?xml version='1.0'?><stream:stream to='" ++ server ++ "' xmlns='jabber:client' xmlns:stream='http://etherx.jabber.org/streams' version='1.0'>"
+
 login' :: Server -> Name -> Password -> IO ([Stanza], [JID], Connection) --XMPPState IO ()
 login' server name password = do
-    putStrLn . showB $ name `B.append` server `B.append` password
     h <- connectTo (showB server) (PortNumber portNum)
+    putStrLn $ startStream (showB server)
     hSetBuffering h NoBuffering
     hSetBinaryMode h True
     input1 <- L.hGetContents h
@@ -297,7 +300,7 @@ login' server name password = do
                 (None, OpenStream) -> setDone Open
                 (Open, StreamFeatures _ _ ms) -> do
                     mapStateT runSASL $ saslAuth ms
-                    sendToServer . C.pack $ "<stream:stream to=\"jabber.ru\" xmlns=\"jabber:client\" xmlns:stream=\"http://etherx.jabber.org/streams\" version=\"1.0\">"
+                    sendToServer . C.pack $ startStream (showB server)
                     setDone Auth
                 (Auth, OpenStream) -> setDone OpenAuth
                 (OpenAuth, StreamFeatures _ _ _) -> do
@@ -324,7 +327,7 @@ login' server name password = do
                     return (toStanza $ stream, rstr)
                 else
                     authenticate
-    B.hPut h $ C.pack "<stream:stream to=\"jabber.ru\" xmlns=\"jabber:client\" xmlns:stream=\"http://etherx.jabber.org/streams\" version=\"1.0\">"
+    B.hPut h $ C.pack $ startStream (showB server)
     hFlush h
     (stream, ls) <- evalStateT authenticate $ ProtocolState (Info server name password) None input (hSend h) []
 --    forkIO $ do
