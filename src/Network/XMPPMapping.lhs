@@ -1,50 +1,72 @@
+%include polycode.fmt
+
+Определение интерфейса модуля.
+
+\begin{code}
 module Network.XMPPMapping
 ( TLS (..)
 , CompressionMethod (..)
 , Compression (..)
 , IAuth (..)
-, Query (..)
 , Iq (..)
 , InnerStanza (..)
 , toXMPP
 )where
+\end{code}
 
+Импортирование модулей.
+
+\begin{code}
 import Network.Parser
 import Network.XMPPTypes
 import Network.Protocol.SASL.GNU
 import Control.Applicative
 import Data.Maybe
 import qualified Data.ByteString.Char8 as C
+\end{code}
 
+\begin{code}
 type XMPPNode = Node BString BString
+\end{code}
 
+Шифрование потока.
+
+\begin{code}
 data TLS = TLS
     deriving (Eq, Show)
+\end{code}
 
+Методы сжатия.
+
+\begin{code}
 data CompressionMethod
     = Zlib
     deriving (Eq, Show)
 
 data Compression = Compression [CompressionMethod]
     deriving (Eq, Show)
+\end{code}
 
+Сообщения процесса аутентификации (SASL).
+
+\begin{code}
 data IAuth = IChallenge BString | ISuccess BString
     deriving (Eq, Show)
+\end{code}
 
-data Query
-    = RosterList [JID]
-    deriving (Eq, Show)
+Iq-строфы.
 
+\begin{code}
 data Iq
     = IBind
     | ISession
-    | Q Query
-    | Unknown1
-    | Unknown2
-    | Unknown3
-    | Unknown4
+    | IRoster [JID]
     deriving (Eq, Show)
+\end{code}
 
+Строфы, обработка которых происходит внутри модуля Network.XMPP.
+
+\begin{code}
 data InnerStanza
     = OpenStream
     | CloseStream
@@ -62,25 +84,27 @@ data InnerStanza
     | IConfirm JID
     | Failure
     deriving (Eq, Show)
+\end{code}
 
---instance Eq InnerStanza where
-    
---data StreamFeatures
---    = TLS
---    | 
+Проверить, поддерживает ли сервер TLS.
 
---login :: String -> String -> String -> String -> IO (Connection, [String])
---login username password hostname server = do
---    h <- connectTo server $ PortNumber portNum
-
+\begin{code}
 getTLS :: [XMPPNode] -> Maybe TLS
-getTLS xs = case findChild (C.pack "starttls") xs of
+getTLS xs = case findChild (bShow "starttls") xs of
     Just _ -> Just TLS
     otherwise -> Nothing
+\end{code}
 
+Поддерживаемые сервером методы сжатия.
+
+\begin{code}
 getCompression :: [XMPPNode] -> Maybe Compression
 getCompression _ = Nothing
+\end{code}
 
+Поддерживаемые сервером механизмы аутентификации.
+
+\begin{code}
 getMechanism :: XMPPNode -> Maybe Mechanism
 getMechanism (Element name _ [Text text]) = case (showB name) of
     "mechanism" -> Just . Mechanism $ text
@@ -88,58 +112,82 @@ getMechanism (Element name _ [Text text]) = case (showB name) of
 getMechanism _ = Nothing
 
 getMechanisms :: [XMPPNode] -> [Mechanism]
-getMechanisms xs = case findChild (C.pack "mechanisms") xs of
+getMechanisms xs = case findChild (bShow "mechanisms") xs of
     Just x -> case x of
         (Element _ _ c) -> map fromJust $ filter isJust $ map getMechanism c
         otherwise -> []
     otherwise -> []
+\end{code}
 
+Определить все механизмы, поддерживаемые сервером.
+
+\begin{code}
 getStreamFeatures :: [XMPPNode] -> InnerStanza
 getStreamFeatures xs = StreamFeatures (getTLS xs) (getCompression xs) (getMechanisms xs)
+\end{code}
 
+Определить JID отправителя сообщения.
+
+\begin{code}
 getFrom :: XMPPNode -> BString
-getFrom (Element _ attrs _) = C.takeWhile (/= '/') . snd . fromJust . findAttribute (C.pack "from") $ attrs
+getFrom (Element _ attrs _) = C.takeWhile (/= '/') . snd . fromJust . findAttribute (bShow "from") $ attrs
+\end{code}
 
+Определить содержание сообщения.
+
+\begin{code}
 getBody :: XMPPNode -> BString
-getBody (Element _ _ cs) = case findChild (C.pack "body") cs of
+getBody (Element _ _ cs) = case findChild (bShow "body") cs of
     Just (Element _ _ [Text text]) -> text
-    otherwise -> C.pack ""
+    otherwise -> bShow ""
+\end{code}
 
+Преобразовать XML элемент, содержащий сообщение, в тип Message.
+
+\begin{code}
 getMessage :: XMPPNode -> Message
 getMessage node = Message (Just $ getFrom node) Nothing (getBody node)
+\end{code}
 
+Найти атрибут jid у XML элемента.
+
+\begin{code}
 getJID :: XMPPNode -> JID
-getJID (Element _ attrs _) = snd . fromJust . findAttribute (C.pack "jid") $ attrs
+getJID (Element _ attrs _) = snd . fromJust . findAttribute (bShow "jid") $ attrs
+\end{code}
 
-getRoster :: [XMPPNode] -> Query
-getRoster ls = RosterList $ map getJID ls
+Получить список контактов.
 
+\begin{code}
+getRoster :: [XMPPNode] -> [JID]
+getRoster ls = map getJID ls
+\end{code}
+
+Преобразовать элемент, содержащий iq-строфу.
+
+\begin{code}
 parseIq :: XMPPNode -> Maybe Iq
 parseIq (Element _ at [Element name attrs xs]) = case (showB name) of
-    "query" ->  case findAttribute (C.pack "xmlns") attrs of
+    "query" ->  case findAttribute (bShow "xmlns") attrs of
         Just (_, t) -> if (showB t) == "jabber:iq:roster"
             then
-                case findAttribute (C.pack "type") at of
+                case findAttribute (bShow "type") at of
                     Just (_, res) -> case showB res of
-                        "result" -> Just . Q . getRoster $ xs
+                        "result" -> Just . IRoster . getRoster $ xs
                         otherwise -> Nothing
                     Nothing -> Nothing
             else
-                Just Unknown1
-        Nothing -> Just Unknown2
+                Nothing
+        Nothing -> Nothing
     "bind" -> Just IBind
     "session" -> Just ISession
-    otherwise -> Just Unknown3
-parseIq _ = Just Unknown4
---case findChild (C.pack "query") cs of
---    Just (Element _ attrs xs) -> case findAttribute (C.pack "xmlns") attrs of
---        Just (_, t) -> if (showB t) == "jabber:iq:roster"
---            then
---                Just . Q . getRoster $ xs
---            else
---                Nothing
---    otherwise -> Nothing
+    otherwise -> Nothing
+parseIq _ = Nothing
+\end{code}
 
+Преобразовать XML элемент во внутреннюю строфу.
+
+\begin{code}
 elemToXMPP :: XMPPNode -> Maybe InnerStanza
 elemToXMPP (OpenTag tag _) = case (showB tag) of
     "stream:stream" -> Just OpenStream
@@ -154,19 +202,24 @@ elemToXMPP node@(Element name attrs c) = case (showB name) of
         otherwise -> Nothing
     "success" -> case c of
         [Text text] -> Just . IAuth . ISuccess $ text
-        otherwise -> Just . IAuth . ISuccess . C.pack $ ""
+        otherwise -> Just . IAuth . ISuccess . bShow $ ""
     "message" -> Just . IMsg $ getMessage node
     "iq" -> Iq <$> (parseIq node)
-    "presence" -> case findAttribute (C.pack "type") attrs of
+    "presence" -> case findAttribute (bShow "type") attrs of
         Just (_, res) -> case showB res of
-            "subscribe" -> IRequest . snd <$> findAttribute (C.pack "from") attrs
-            "subscribed" -> IConfirm . snd <$> findAttribute (C.pack "from") attrs
-            "unsubscribed" -> IRefuse . snd <$> findAttribute (C.pack "from") attrs
+            "subscribe" -> IRequest . snd <$> findAttribute (bShow "from") attrs
+            "subscribed" -> IConfirm . snd <$> findAttribute (bShow "from") attrs
+            "unsubscribed" -> IRefuse . snd <$> findAttribute (bShow "from") attrs
             otherwise -> Nothing
         Nothing -> Just IPresence
     "failure" -> Just Failure
     otherwise -> Nothing
 elemToXMPP _ = Nothing
+\end{code}
 
+Преобразовать поток XML-элементов в поток внутренних строф.
+
+\begin{code}
 toXMPP :: [XMPPNode] -> [InnerStanza]
 toXMPP = map fromJust . filter isJust . map elemToXMPP
+\end{code}

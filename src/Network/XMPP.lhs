@@ -1,3 +1,6 @@
+%include polycode.fmt
+
+\begin{code}
 module Network.XMPP
 ( Stanza (..)
 , Subscribe (..)
@@ -244,7 +247,7 @@ saslAuth ms = do
 
 toStanzaElement :: InnerStanza -> Maybe Stanza
 toStanzaElement (IMsg msg) = Just $ Msg msg
-toStanzaElement (Iq (Q (RosterList ls))) = Just $ Roster ls
+toStanzaElement (Iq (IRoster ls)) = Just $ Roster ls
 toStanzaElement CloseStream = Just EndStream
 toStanzaElement (IRequest jid) = Just . Sub $ Request (Just jid) Nothing
 toStanzaElement (IConfirm jid) = Just . Sub $ Confirm (Just jid) Nothing
@@ -315,7 +318,7 @@ login' server name password = do
                 (Presence, IPresence) -> do
                     sendToServer . C.pack $ "<iq type = \"get\"><query xmlns=\"jabber:iq:roster\"/></iq>"
                     setDone RosterD
-                (RosterD, (Iq (Q (RosterList ls)))) -> do
+                (RosterD, (Iq (IRoster ls))) -> do
                     setRoster ls
                     setDone Done
                 otherwise -> liftIO . putStrLn . show $ msg
@@ -373,23 +376,4 @@ login' server name password = do
 --                
 --            reactimate $ (processEvent <%> recvEvent)
 --    return . fromChanges startState $ changePublicStateHandler
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
+\end{code}

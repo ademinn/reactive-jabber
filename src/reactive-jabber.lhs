@@ -1,3 +1,6 @@
+%include polycode.fmt
+
+\begin{code}
 import Reactive.Banana
 import Reactive.Banana.Combinators
 import Reactive.Banana.Switch
@@ -426,3 +429,4 @@ recvMsgLoop (x:xs) fire = do
 --        otherwise -> do
 --            fire stanza
 --            recvMsgLoop recv fire
+\end{code}
