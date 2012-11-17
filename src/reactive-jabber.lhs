@@ -1,5 +1,7 @@
 %include polycode.fmt
 
+Импортирование модулей.
+
 \begin{code}
 import Reactive.Banana
 import Reactive.Banana.Combinators
@@ -15,23 +17,56 @@ import Graphics.UI.Gtk
 import Graphics.UI.Gtk.ModelView as Model
 import Network.XMPP
 import Network.XMPPTypes
-import qualified Data.ByteString as B
-import qualified Data.ByteString.Char8 as C
+\end{code}
 
-data Chat = Chat    { userName :: String
-                    , chatPanel :: VPaned
-                    , addMsg :: BString -> IO ()
-                    }
+Функции для работы с TextBuffer.
 
-data MsgT = MsgT  { chatName :: String
-                , sender :: String
-                , msgText :: BString
-                }
+\begin{code}
+startBuf :: TextBuffer -> IO TextIter
+startBuf tb = textBufferGetIterAtOffset tb 0
 
-instance Show MsgT where
-    show (MsgT _ s t) = s ++ ": " ++ (showB t)
+endBuf :: TextBuffer -> IO TextIter
+endBuf tb = textBufferGetIterAtOffset tb (-1)
 
-type ChatRequest = (String, Maybe String)
+appendText :: TextBuffer -> BString -> IO ()
+appendText tb msg = do
+    ti <- endBuf tb
+    textBufferInsertByteString tb ti (msg +++ "\n")
+\end{code}
+
+Структура данных для представления сообщений.
+В отличие от Message используется не для приема и отправки сообщений, а для их отображения.
+Вместо полей from и to имеет поля chatName и sender,
+что позволяет одинково обрабатывать как входящие, так и исходящие сообщения.
+
+\begin{code}
+data MsgT
+    = MsgT
+        { chatName :: String
+        , sender :: String
+        , msgText :: BString
+        }
+
+instance BShow MsgT where
+    bShow (MsgT _ f t) = (f ++ ": ") +++ t
+\end{code}
+
+Структура данных, представляющая собой виджет чата.
+
+\begin{code}
+data Chat
+    = Chat
+        { userName :: String
+        , chatPanel :: VPaned
+        , addMsg :: BString -> IO ()
+        }
+
+instance GObjectClass Chat where
+    toGObject = toGObject . chatPanel
+    unsafeCastGObject = undefined
+
+instance ObjectClass Chat
+instance WidgetClass Chat
 
 chatNew :: String -> String -> (MsgT -> IO ()) -> IO Chat
 chatNew s name fire = do
@@ -56,25 +91,13 @@ chatNew s name fire = do
     panedAdd1 mainWdgt outputWdgt
     panedAdd2 mainWdgt inputWdgt
     return $ Chat s mainWdgt (postGUIAsync . appendText tb)
+\end{code}
 
-startBuf :: TextBuffer -> IO TextIter
-startBuf tb = textBufferGetIterAtOffset tb 0
+Точка входа в программу.
+Запускает диалоговое окно и получает данные, необходимые для авторизации.
+Производит авторизацию и запускает основной цикл обработки событий.
 
-endBuf :: TextBuffer -> IO TextIter
-endBuf tb = textBufferGetIterAtOffset tb (-1)
-
-appendText :: TextBuffer -> BString -> IO ()
-appendText tb msg = do
-    ti <- endBuf tb
-    textBufferInsertByteString tb ti (msg `B.append` (C.pack "\n"))
-
-instance GObjectClass Chat where
-    toGObject = toGObject . chatPanel
-    unsafeCastGObject = undefined
-
-instance ObjectClass Chat
-instance WidgetClass Chat
-
+\begin{code}
 main :: IO ()
 main = do
     hSetEncoding stdout utf8
@@ -106,7 +129,7 @@ main = do
                 loginText <- entryGetText loginEntry
                 passwordText <- entryGetText passwordEntry
                 serverText <- entryGetText serverEntry
-                (stream, roster, con) <- login (C.pack serverText) (C.pack loginText) (C.pack passwordText) (\_ -> return ()) --serverText
+                (stream, roster, con) <- login (bShow serverText) (bShow loginText) (bShow passwordText)
                 widgetDestroy loginDialog
                 mainLoop (loginText ++ "@" ++ serverText) stream (map showB roster) con
             otherwise -> do
@@ -115,15 +138,20 @@ main = do
     widgetShowAll loginDialog
     mainGUI
     return ()
+\end{code}
 
+Фунция для завершения работы приложения.
+
+\begin{code}
 quitChat :: Connection -> IO ()
 quitChat con = do
     send con EndStream
     mainQuit
+\end{code}
 
+\begin{code}
 mainLoop :: String -> [Stanza] -> [String] -> Connection -> IO ()
 mainLoop name stream roster con = do
-    --let name = username con
     window <- windowNew
     chWindow <- windowNew
     chats <- notebookNew
@@ -134,7 +162,7 @@ mainLoop name stream roster con = do
     (inMsg, fireInMsg) <- newAddHandler
     (doubleClick, fireDoubleClick) <- newAddHandler
     vBox <- vBoxNew False 5
-    (treeview, list) <- listTreeView name roster -- fireDoubleClick
+    (treeview, list) <- listTreeView name roster
     let getSel = getSelected list treeview
         addContact jid = do
             ls <- listStoreToList list
@@ -149,7 +177,7 @@ mainLoop name stream roster con = do
             case List.elemIndex jid ls of
                 Just i -> do
                     listStoreRemove list i
-                    send con $ Sub (Refuse (Just $ C.pack name) (Just $ C.pack jid))
+                    send con . Sub  $ Refuse (Just $ bShow name) (Just $ bShow jid)
                 Nothing -> return ()
     
     treeview `on` buttonPressEvent $ do
@@ -159,7 +187,6 @@ mainLoop name stream roster con = do
                 liftIO $ do
                     s <- getSel
                     fireDoubleClick s
-                    --onDoubleClick list treeview fireAction
                 return ()
             else
                 return ()
@@ -193,7 +220,7 @@ mainLoop name stream roster con = do
         if res == ResponseOk
             then do
                 jid <- entryGetText addEntry
-                send con $ Sub (Request (Just $ C.pack name) (Just $ C.pack jid))
+                send con $ Sub (Request (Just $ bShow name) (Just $ bShow jid))
             else
                 return ()
     
@@ -266,7 +293,7 @@ mainLoop name stream roster con = do
     
     let showRequest :: JID -> IO ResponseId
         showRequest jid = do
-            labelSetText requestLabel $ "Authorize " ++ (C.unpack jid) ++ "?"
+            labelSetText requestLabel $ "Authorize " ++ (showB jid) ++ "?"
             widgetShowAll requestDialog
             dialogRun requestDialog
 
@@ -283,7 +310,7 @@ mainLoop name stream roster con = do
                 eChatMap = accumE Map.empty $ insertSafe <$> eAddChat'
                 bChatMap = stepper Map.empty eChatMap
                 
-                (<%>) f e = f <$> ((rTuple <$> bChatMap) <@> e)
+                (<%>) f e = f <$> (flip (,) <$> bChatMap <@> e)
                 
                 addChat :: (String, Map.Map String Chat) -> IO ()
                 addChat (to, m) = do
@@ -302,10 +329,8 @@ mainLoop name stream roster con = do
                         Sub (Request (Just jid) _) -> do
                             res <- postGUISync $ showRequest jid
                             case res of
-                                ResponseYes -> send con . Sub $ Confirm (Just $ C.pack name) (Just jid)
-                                otherwise -> send con . Sub $ Refuse (Just $ C.pack name) (Just jid)
-                            --putStrLn $ show res
---                            showRequest jid
+                                ResponseYes -> send con . Sub $ Confirm (Just $ bShow name) (Just jid)
+                                otherwise -> send con . Sub $ Refuse (Just $ bShow name) (Just jid)
                             return ()
                         Sub (Confirm (Just jid) _) -> do
                             addContact $ showB jid
@@ -317,14 +342,14 @@ mainLoop name stream roster con = do
                 outMsgProc (msg, m) = do
                     let to = chatName msg
                         c = m Map.! to
-                    send con (Msg $ Message Nothing (Just (C.pack to)) (msgText msg))
-                    addMsg c $ showBMsg msg
+                    send con . Msg $ Message Nothing (Just $ bShow to) (msgText msg)
+                    addMsg c $ bShow msg
                 
                 printMsg :: (MsgT, Map.Map String Chat) -> IO ()
                 printMsg (msg, m) = do
                     let to = chatName msg
                         c = m Map.! to
-                    addMsg c $ showBMsg msg
+                    addMsg c $ bShow msg
                 
                 showChat :: String -> IO ()
                 showChat name = do
@@ -346,33 +371,20 @@ mainLoop name stream roster con = do
                             i <- notebookAppendPage chats chat name
                             widgetShowAll chat
                             notebookSetCurrentPage chats i
-            reactimate $ (addChat <%> eAddChat) `union` (showChat <$> eShowChat) `union` (showChat' <%> eShowChat') `union` (printMsg <%> ePrintMsg) `union` (outMsgProc <%> eOutMsg) `union` (inMsgProc <$> eInMsg)
+            reactimate $ (addChat <%> eAddChat) `union` (showChat <$> eShowChat) `union` (showChat' <%> eShowChat')
+                `union` (printMsg <%> ePrintMsg) `union` (outMsgProc <%> eOutMsg) `union` (inMsgProc <$> eInMsg)
     network <- compile networkDescription
---        recvMsgLoop stream fireInMsg
     widgetShowAll window
     actuate network
     forkIO $ do
-        sequence $ map (foo fireInMsg) $ stream
+        sequence $ map fireInMsg stream
         return ()
-        --recvMsgLoop (receive con) fireInMsg
     return ()
+\end{code}
 
-foo :: (Stanza -> IO ()) -> Stanza -> IO ()
-foo fire s = do
-    putStrLn . show $ s
-    fire s
-
-showBMsg :: MsgT -> BString
-showBMsg (MsgT _ f t) = (C.pack (f ++ ": ")) `B.append` t
-
-rTuple :: a -> b -> (b, a)
-rTuple x y = (y, x)
-
+\begin{code}
 insertSafe :: Ord k => (k, a) -> Map.Map k a -> Map.Map k a
 insertSafe (k, v) m = if k `Map.member` m then m else Map.insert k v m
-
-insertSafe' :: Ord k => k -> Map.Map k k -> Map.Map k k
-insertSafe' k m = insertSafe (k, k) m
 
 listTreeView :: String -> [String] -> IO (TreeView, ListStore String)
 listTreeView title sourceList = do
@@ -385,17 +397,7 @@ listTreeView title sourceList = do
     Model.cellLayoutPackStart col renderer False
     Model.cellLayoutSetAttributes col renderer list
             $ \ind -> [Model.cellText := ind]
-    --listStoreAppend list "append"
     Model.treeViewAppendColumn treeview col
---    treeview `on` buttonPressEvent $ do
---        click <- eventClick
---        if click == DoubleClick
---            then do
---                liftIO $ onDoubleClick list treeview fireAction
---                return ()
---            else
---                return ()
---        return False
     return (treeview, list)
 
 getSelected :: ListStore a -> TreeView -> IO a
@@ -404,29 +406,4 @@ getSelected list treeView = do
     sel <- Model.treeSelectionGetSelectedRows tree
     let s = head  (head sel)
     Model.listStoreGetValue list s
-
-onDoubleClick :: ListStore String -> TreeView -> (String -> IO()) -> IO ()
-onDoubleClick list treeview fireAction = do
-    tree <- Model.treeViewGetSelection treeview
-    sel <- Model.treeSelectionGetSelectedRows tree
-    let s = head  (head sel)
-    v <- Model.listStoreGetValue list s
-    fireAction v
-
-recvMsgLoop :: [Stanza] -> (Stanza -> IO ()) -> IO ()
-recvMsgLoop [] _ = return ()
-recvMsgLoop (x:xs) fire = do
---    threadsEnter
-    threadDelay 1000
-    postGUIAsync . fire $ x
---    threadsLeave
-    recvMsgLoop xs fire
---recvMsgLoop :: IO Stanza -> (Stanza -> IO ()) -> IO ()
---recvMsgLoop recv fire = do
---    stanza <- recv
---    case stanza of
---        EndStream -> return ()
---        otherwise -> do
---            fire stanza
---            recvMsgLoop recv fire
 \end{code}

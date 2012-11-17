@@ -12,6 +12,7 @@ module Network.XMPPTypes
 , toStrict
 , showB
 , (+++)
+, bShowAttr
 ) where
 \end{code}
 
@@ -68,22 +69,10 @@ data Message
         }
     deriving (Eq, Show)
 
-instance BShow Message where
-    bShow (Message f t b) = "<message" +++ f' +++ t' +++ "><body>" +++ b +++ "</body></message>"
-        where
-            f' = bShow' "from" f
-            t' = bShow' "to" t
-            bShow' tag val = case val of
-                Nothing -> B.empty
-                Just v -> tag +++ "='" +++ v +++ "'"
-    
---    show (Msg (Message f t b)) = "<message" ++ f' ++ t' ++ "><body>" ++ (showB b) ++ "</body></message>"
---        where
---            f' = case f of
---                    Nothing -> ""
---                    Just s -> " from='" ++ (showB s) ++ "'"
---            t' = case t of
---                    Nothing -> ""
---                    Just s -> " to='" ++ (showB s) ++ "'"
+bShowAttr :: String -> Maybe BString -> BString
+bShowAttr _ Nothing = B.empty
+bShowAttr a (Just b) = (" " ++ a ++ "='") +++ b +++ "'"
 
+instance BShow Message where
+    bShow (Message f t b) = "<message" +++ (bShowAttr "from" f) +++ (bShowAttr "to" t) +++ "><body>" +++ b +++ "</body></message>"
 \end{code}
