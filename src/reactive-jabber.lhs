@@ -149,9 +149,23 @@ quitChat con = do
     mainQuit
 \end{code}
 
+Основная функция. В ней создается пользовательский интерфейс, и описывается реактивная сеть, обеспечивающая работу программы.
+
 \begin{code}
 mainLoop :: String -> [Stanza] -> [String] -> Connection -> IO ()
 mainLoop name stream roster con = do
+\end{code}
+
+Создание обработчиков событий: получение сообщения и двойной клик на элементе списка контактов.
+
+\begin{code}
+    (inMsg, fireInMsg) <- newAddHandler
+    (doubleClick, fireDoubleClick) <- newAddHandler
+\end{code}
+
+Создание интерфейса.
+
+\begin{code}
     window <- windowNew
     chWindow <- windowNew
     chats <- notebookNew
@@ -159,8 +173,6 @@ mainLoop name stream roster con = do
                     , windowDefaultWidth := 200
                     , windowDefaultHeight := 100
                     ]
-    (inMsg, fireInMsg) <- newAddHandler
-    (doubleClick, fireDoubleClick) <- newAddHandler
     vBox <- vBoxNew False 5
     (treeview, list) <- listTreeView name roster
     let getSel = getSelected list treeview
@@ -290,15 +302,26 @@ mainLoop name stream roster con = do
     
     requestDialog `on` response $ \_ -> do
         widgetHideAll requestDialog
-    
+\end{code}
+
+\begin{code}
     let showRequest :: JID -> IO ResponseId
         showRequest jid = do
             labelSetText requestLabel $ "Authorize " ++ (showB jid) ++ "?"
             widgetShowAll requestDialog
             dialogRun requestDialog
+\end{code}
 
+Описание сети событий.
+
+\begin{code}
     let networkDescription :: Frameworks t => Moment t ()
         networkDescription = do
+\end{code}
+
+Создание внутренних событий и преобразование внешних сообщений в события.
+
+\begin{code}
             (eAddChat, fireAddChat) <- newEvent
             (eAddChat', fireAddChat') <- newEvent
             (eShowChat', fireShowChat') <- newEvent
