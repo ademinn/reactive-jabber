@@ -1,0 +1,44 @@
+\documentclass[a4paper,12pt, titlepage]{article}
+\usepackage{indentfirst}
+\usepackage[cm]{fullpage}
+\usepackage[utf8]{inputenc}
+\usepackage[T2A]{fontenc}
+\usepackage[english,russian]{babel}
+\usepackage{titling}
+\usepackage{amsmath}
+\usepackage{tikz-qtree}
+\usepackage{listings}
+\usepackage{upquote}
+%\parindent=0em
+
+%\setlength{\droptitle}{-15em}
+\pretitle{
+\begin{center}\large 
+Санкт-Петербургский государственный университет \\ 
+информационных технологий, механики и оптики \\[2cm]
+Факультет информационных технологий и программирования \\
+Кафедра компьютерных технологий \\[5cm]
+\end{center}
+\begin{center}
+}
+
+\title{
+\LARGE\bfseries
+Отчет по курсовой работе
+}
+
+\author{Демин Андрей\\ группа 4539}
+
+\date{\vfill \today}
+
+\begin{document}
+\maketitle  
+\setcounter{page}{2}
+\tableofcontents
+\clearpage
+\renewcommand\thepage{\arabic{page}}
+\pagestyle{plain}
+\input{intro.tex}
+\input{task.tex}
+\input{impl.tex}
+\end{document}

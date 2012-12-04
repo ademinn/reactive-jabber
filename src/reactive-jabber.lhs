@@ -191,7 +191,7 @@ mainLoop name stream roster con = do
                     listStoreRemove list i
                     send con . Sub  $ Refuse (Just $ bShow name) (Just $ bShow jid)
                 Nothing -> return ()
-    
+
     treeview `on` buttonPressEvent $ do
         click <- eventClick
         if click == DoubleClick
@@ -204,7 +204,7 @@ mainLoop name stream roster con = do
                 return ()
         return False
     boxPackStart vBox treeview PackGrow 0
-    
+
     addDialog <- dialogNew
     addUpper <- dialogGetUpper addDialog
     addBox <- hBoxNew False 5
@@ -221,10 +221,10 @@ mainLoop name stream roster con = do
             dialogResponse addDialog ResponseCancel
             widgetHideAll addDialog
         return True
-    
+
     addDialog `on` response $ \_ -> do
         widgetHideAll addDialog
-    
+
     addButton <- buttonNewWithLabel "Add contact"
     addButton `on` buttonActivated $ do
         widgetShowAll addDialog
@@ -235,9 +235,9 @@ mainLoop name stream roster con = do
                 send con $ Sub (Request (Just $ bShow name) (Just $ bShow jid))
             else
                 return ()
-    
+
     boxPackStart vBox addButton PackNatural 0
-    
+
     removeDialog <- dialogNew
     removeUpper <- dialogGetUpper removeDialog
     removeLabel <- labelNew $ Just "Nothing"
@@ -247,16 +247,16 @@ mainLoop name stream roster con = do
     dialogAddButton removeDialog "Yes" ResponseYes
     dialogAddButton removeDialog "No" ResponseNo
     widgetShowAll removeUpper
-    
+
     removeDialog `on` deleteEvent $ do
         liftIO $ do
             dialogResponse removeDialog ResponseNo
             widgetHideAll removeDialog
         return True
-    
+
     removeDialog `on` response $ \_ -> do
         widgetHideAll removeDialog
-        
+
     removeButton <- buttonNewWithLabel "Remove contact"
     removeButton `on` buttonActivated $ do
         jid <- getSel
@@ -266,9 +266,9 @@ mainLoop name stream roster con = do
         case res of
             ResponseYes -> removeContact jid
             otherwise -> return ()
-    
+
     boxPackStart vBox removeButton PackNatural 0
-    
+
     set window  [ windowDefaultWidth := 100
                 , windowDefaultHeight := 200
                 , containerChild := vBox
@@ -279,7 +279,7 @@ mainLoop name stream roster con = do
             putStrLn "exit"
             quitChat con
         return False
-    
+
     chWindow `on` deleteEvent $ do
         liftIO $ widgetHideAll chWindow
         return True
@@ -293,13 +293,13 @@ mainLoop name stream roster con = do
     dialogAddButton requestDialog "Yes" ResponseYes
     dialogAddButton requestDialog "No" ResponseNo
     widgetShowAll requestUpper
-    
+
     requestDialog `on` deleteEvent $ do
         liftIO $ do
             dialogResponse requestDialog ResponseNo
             widgetHideAll requestDialog
         return True
-    
+
     requestDialog `on` response $ \_ -> do
         widgetHideAll requestDialog
 \end{code}
@@ -329,12 +329,26 @@ mainLoop name stream roster con = do
             (eOutMsg, fireOutMsg) <- newEvent
             eInMsg <- fromAddHandler inMsg
             eShowChat <- fromAddHandler doubleClick
+\begin{code}
+
+Далее следует описание обработчиков событий.
+
+\end{code}
             let
+\end{code}
+
+
+
+\begin{code}
                 eChatMap = accumE Map.empty $ insertSafe <$> eAddChat'
                 bChatMap = stepper Map.empty eChatMap
-                
+
                 (<%>) f e = f <$> (flip (,) <$> bChatMap <@> e)
-                
+\end{code}
+
+
+
+\begin{code}
                 addChat :: (String, Map.Map String Chat) -> IO ()
                 addChat (to, m) = do
                     case Map.lookup to m of
@@ -342,7 +356,10 @@ mainLoop name stream roster con = do
                         Nothing -> do
                             c <- chatNew to name fireOutMsg
                             fireAddChat' (to, c)
-                
+\end{code}
+
+
+\begin{code}
                 inMsgProc :: Stanza -> IO ()
                 inMsgProc stanza = do
                     case stanza of
@@ -360,25 +377,34 @@ mainLoop name stream roster con = do
                         Sub (Refuse (Just jid) _) -> do
                             removeContact $ showB jid
                         otherwise -> return ()
-                
+\end{code}
+
+
+\begin{code}
                 outMsgProc :: (MsgT, Map.Map String Chat) -> IO ()
                 outMsgProc (msg, m) = do
                     let to = chatName msg
                         c = m Map.! to
                     send con . Msg $ Message Nothing (Just $ bShow to) (msgText msg)
                     addMsg c $ bShow msg
-                
+\end{code}
+
+
+\begin{code}
                 printMsg :: (MsgT, Map.Map String Chat) -> IO ()
                 printMsg (msg, m) = do
                     let to = chatName msg
                         c = m Map.! to
                     addMsg c $ bShow msg
-                
+\end{code}
+
+
+\begin{code}
                 showChat :: String -> IO ()
                 showChat name = do
                     fireAddChat name
                     fireShowChat' name
-                    
+
                 showChat' :: (String, Map.Map String Chat) -> IO ()
                 showChat' (name, m) = do
                     let chat = m Map.! name
@@ -394,8 +420,16 @@ mainLoop name stream roster con = do
                             i <- notebookAppendPage chats chat name
                             widgetShowAll chat
                             notebookSetCurrentPage chats i
+\end{code}
+
+
+\begin{code}
             reactimate $ (addChat <%> eAddChat) `union` (showChat <$> eShowChat) `union` (showChat' <%> eShowChat')
                 `union` (printMsg <%> ePrintMsg) `union` (outMsgProc <%> eOutMsg) `union` (inMsgProc <$> eInMsg)
+\end{code}
+
+
+\begin{code}
     network <- compile networkDescription
     widgetShowAll window
     actuate network
