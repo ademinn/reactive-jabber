@@ -1,5 +1,7 @@
 %include polycode.fmt
 
+\subsubsection{reactive-jabber}
+
 Импортирование модулей.
 
 \begin{code}
@@ -329,11 +331,11 @@ mainLoop name stream roster con = do
             (eOutMsg, fireOutMsg) <- newEvent
             eInMsg <- fromAddHandler inMsg
             eShowChat <- fromAddHandler doubleClick
-\begin{code}
+\end{code}
 
 Далее следует описание обработчиков событий.
 
-\end{code}
+\begin{code}
             let
 \end{code}
 
@@ -424,8 +426,9 @@ mainLoop name stream roster con = do
 
 
 \begin{code}
-            reactimate $ (addChat <%> eAddChat) `union` (showChat <$> eShowChat) `union` (showChat' <%> eShowChat')
-                `union` (printMsg <%> ePrintMsg) `union` (outMsgProc <%> eOutMsg) `union` (inMsgProc <$> eInMsg)
+            reactimate $ (addChat <%> eAddChat) `union` (showChat <$> eShowChat)
+                `union` (showChat' <%> eShowChat') `union` (printMsg <%> ePrintMsg)
+                `union` (outMsgProc <%> eOutMsg) `union` (inMsgProc <$> eInMsg)
 \end{code}
 
 

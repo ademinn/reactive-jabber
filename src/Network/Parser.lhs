@@ -1,5 +1,7 @@
 %include polycode.fmt
 
+\subsubsection{Network.Parser}
+
 Определение интерфейса модуля.
 
 \begin{code}

@@ -1,5 +1,7 @@
 %include polycode.fmt
 
+\subsubsection{Network.XMPPTypes}
+
 Определение интерфейса модуля.
 
 \begin{code}
