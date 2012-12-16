@@ -1,4 +1,4 @@
-%include polycode.fmt
+%include mystyle.fmt
 
 \subsubsection{Network.XMPP}
 

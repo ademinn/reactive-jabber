@@ -1,4 +1,4 @@
-%include polycode.fmt
+%include mystyle.fmt
 
 \subsubsection{reactive-jabber}
 
@@ -326,11 +326,12 @@ mainLoop name stream roster con = do
 \begin{code}
             (eAddChat, fireAddChat) <- newEvent
             (eAddChat', fireAddChat') <- newEvent
-            (eShowChat', fireShowChat') <- newEvent
+            (eShowChat, fireShowChat) <- newEvent
             (ePrintMsg, firePrintMsg) <- newEvent
             (eOutMsg, fireOutMsg) <- newEvent
+            (eProcRequest, fireProcRequest) <- newEvent
             eInMsg <- fromAddHandler inMsg
-            eShowChat <- fromAddHandler doubleClick
+            eDoubleClick <- fromAddHandler doubleClick
 \end{code}
 
 Далее следует описание обработчиков событий.
@@ -362,18 +363,25 @@ mainLoop name stream roster con = do
 
 
 \begin{code}
+                procRequest :: JID -> IO ()
+                procRequest jid = do
+                    res <- postGUISync $ showRequest jid
+                    case res of
+                        ResponseYes -> send con . Sub $ Confirm (Just $ bShow name) (Just jid)
+                        otherwise -> send con . Sub $ Refuse (Just $ bShow name) (Just jid)
+                    return ()
+\end{code}
+
+
+\begin{code}
+
                 inMsgProc :: Stanza -> IO ()
                 inMsgProc stanza = do
                     case stanza of
                         Msg (Message (Just f) _ b) -> do
                             fireAddChat (showB f)
                             firePrintMsg $ MsgT (showB f) (showB f) b
-                        Sub (Request (Just jid) _) -> do
-                            res <- postGUISync $ showRequest jid
-                            case res of
-                                ResponseYes -> send con . Sub $ Confirm (Just $ bShow name) (Just jid)
-                                otherwise -> send con . Sub $ Refuse (Just $ bShow name) (Just jid)
-                            return ()
+                        Sub (Request (Just jid) _) -> fireProcRequest jid
                         Sub (Confirm (Just jid) _) -> do
                             addContact $ showB jid
                         Sub (Refuse (Just jid) _) -> do
@@ -402,13 +410,13 @@ mainLoop name stream roster con = do
 
 
 \begin{code}
-                showChat :: String -> IO ()
-                showChat name = do
+                procDoubleClick :: String -> IO ()
+                procDoubleClick name = do
                     fireAddChat name
-                    fireShowChat' name
+                    fireShowChat name
 
-                showChat' :: (String, Map.Map String Chat) -> IO ()
-                showChat' (name, m) = do
+                showChat :: (String, Map.Map String Chat) -> IO ()
+                showChat (name, m) = do
                     let chat = m Map.! name
                     ret <- notebookGetNPages chats
                     vis <- get chats widgetVisible
@@ -426,9 +434,10 @@ mainLoop name stream roster con = do
 
 
 \begin{code}
-            reactimate $ (addChat <%> eAddChat) `union` (showChat <$> eShowChat)
-                `union` (showChat' <%> eShowChat') `union` (printMsg <%> ePrintMsg)
+            reactimate $ (addChat <%> eAddChat) `union` (procDoubleClick <$> eDoubleClick)
+                `union` (showChat <%> eShowChat) `union` (printMsg <%> ePrintMsg)
                 `union` (outMsgProc <%> eOutMsg) `union` (inMsgProc <$> eInMsg)
+                `union` (procRequest <$> eProcRequest)
 \end{code}
 
 

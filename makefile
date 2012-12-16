@@ -1,5 +1,7 @@
-all:
-	echo "pass"
+all: report bin
+
+bin:
+	cd src && $(MAKE)
 
 report:	srcreport
 	cd report && $(MAKE)
@@ -11,7 +13,8 @@ srcreport: src/reactive-jabber.lhs src/Network/Parser.lhs src/Network/XMPPTypes.
 	lhs2TeX src/Network/XMPPMapping.lhs -o report/XMPPMapping.tex
 	lhs2TeX src/Network/XMPP.lhs -o report/XMPP.tex
 
-clear:
+clean:
+	rm -f *~
 	rm -f src/reactive-jabber
 	rm -f src/*~
 	rm -f src/*.hi
