@@ -6,4 +6,4 @@
 %subst string a = "\text{\tt {\color{OrangeRed} \char34 " a "\char34 }}"
 %format qualified = "\mathbf{qualified}"
 %format as = "\mathbf{as}"
-%format ++ = "\text{\tt ++ }"
+%format ++ = "\text{\tt {\color{Plum}++}}"
