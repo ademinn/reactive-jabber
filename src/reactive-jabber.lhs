@@ -329,7 +329,6 @@ mainLoop name stream roster con = do
             (eShowChat, fireShowChat) <- newEvent
             (ePrintMsg, firePrintMsg) <- newEvent
             (eOutMsg, fireOutMsg) <- newEvent
-            (eProcRequest, fireProcRequest) <- newEvent
             eInMsg <- fromAddHandler inMsg
             eDoubleClick <- fromAddHandler doubleClick
 \end{code}
@@ -375,13 +374,13 @@ mainLoop name stream roster con = do
 
 \begin{code}
 
-                inMsgProc :: Stanza -> IO ()
-                inMsgProc stanza = do
+                procInMsg :: Stanza -> IO ()
+                procInMsg stanza = do
                     case stanza of
                         Msg (Message (Just f) _ b) -> do
                             fireAddChat (showB f)
                             firePrintMsg $ MsgT (showB f) (showB f) b
-                        Sub (Request (Just jid) _) -> fireProcRequest jid
+                        Sub (Request (Just jid) _) -> procRequest jid
                         Sub (Confirm (Just jid) _) -> do
                             addContact $ showB jid
                         Sub (Refuse (Just jid) _) -> do
@@ -391,12 +390,10 @@ mainLoop name stream roster con = do
 
 
 \begin{code}
-                outMsgProc :: (MsgT, Map.Map String Chat) -> IO ()
-                outMsgProc (msg, m) = do
+                procOutMsg :: MsgT -> IO ()
+                procOutMsg msg = do
                     let to = chatName msg
-                        c = m Map.! to
                     send con . Msg $ Message Nothing (Just $ bShow to) (msgText msg)
-                    addMsg c $ bShow msg
 \end{code}
 
 
@@ -435,9 +432,8 @@ mainLoop name stream roster con = do
 
 \begin{code}
             reactimate $ (addChat <%> eAddChat) `union` (procDoubleClick <$> eDoubleClick)
-                `union` (showChat <%> eShowChat) `union` (printMsg <%> ePrintMsg)
-                `union` (outMsgProc <%> eOutMsg) `union` (inMsgProc <$> eInMsg)
-                `union` (procRequest <$> eProcRequest)
+                `union` (showChat <%> eShowChat) `union` (printMsg <%> (ePrintMsg `union` eOutMsg))
+                `union` (procOutMsg <$> eOutMsg) `union` (procInMsg <$> eInMsg)
 \end{code}
 
 
