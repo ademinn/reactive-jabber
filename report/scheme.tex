@@ -1,0 +1,89 @@
+\tikzstyle{IO}=[fill=yellow!20,rounded corners, draw=black!50, dashed]
+\tikzstyle{event}=[draw, fill=blue!30, text width=6em, 
+    text centered, minimum height=2em]
+\tikzstyle{behavior}=[event, text width=10em, fill=green!20]
+\tikzstyle{function}=[fill=red!20, draw=black!50,text width=8em, text centered]
+\tikzstyle{condition}=[function, text width=11em, fill=black!20]
+\tikzstyle{arr}=[>=stealth',semithick]
+\tikzstyle{tmp}=[inner sep=0,minimum size=0]
+\tikzstyle{op}=[fill=blue!20,rounded corners,minimum height=2em]
+\tikzstyle{nod}=[circle,fill=black!100, inner sep=0, minimum size=2.5, draw=black!100]
+
+\def\shift{0.5cm}
+\begin{tikzpicture}
+    \node       (inputLabel)                           {Input};
+    \node[event] (eInMsg)           [below=of inputLabel]                   {eInMsg};
+    \node[event] (eOutMsg)          [below=of eInMsg, yshift=-3.25cm]   {eOutMsg};
+    \node[event] (eDoubleClick)     [below=of eOutMsg, yshift=-2.3cm]  {eDoubleClick};
+    \begin{pgfonlayer}{background}
+        \node[IO] (input)            [fit = (inputLabel) (eInMsg) (eOutMsg) (eDoubleClick)] {};
+    \end{pgfonlayer}
+
+    \node               (procInMsgLabel)    [right=of inputLabel, xshift=1.5cm]     {procInMsg};
+    \node[condition]    (confirmC)          [below=of procInMsgLabel]               {Confirm};
+    \node[condition]    (refuseC)           [below=of confirmC, yshift=\shift]                     {Refuse};
+    \node[condition]    (requestC)          [below=of refuseC, yshift=\shift]                      {Request};
+    \node[condition]    (messageC)          [below=of requestC, yshift=-0.3cm]                     {Message};
+    \begin{pgfonlayer}{background}
+        \node[function] (procInMsg) [fit = (procInMsgLabel) (messageC) (requestC) (confirmC) (refuseC)] {};
+    \end{pgfonlayer}
+    \draw[->, arr] (eInMsg.east) -- (eInMsg -| procInMsg.west);
+
+    \node[behavior] (bChatMap)      [below=of procInMsg, xshift=2.5cm, yshift=-0.3cm] {bChatMap};
+    \node[event] (eChatMap)         [below=of bChatMap, xshift=1cm, yshift=0.5cm] {eChatMap};
+    \node[op] (op1) [left=of eChatMap, xshift=0.8cm] {<\%>};
+    \node[function]   (addChat) [below=of eChatMap, xshift=-1cm, yshift=0.5cm] {addChat};
+    \node[event] (eAddChat)         [left=of op1, xshift=0.5cm] {eAddChat};
+    \draw[->, arr] (eAddChat) -- (op1);
+    \draw[<-, arr] (op1.north) -- (op1 |- bChatMap.south);
+    \draw[->, arr] (op1.south) -- (op1 |- addChat.north);
+    \draw[<-, arr] (eChatMap.south) -- (eChatMap |- addChat.north);
+    \draw[->, arr] (eChatMap.north) -- (eChatMap |- bChatMap.south);
+    
+    \node           (outputLabel)   [right=of procInMsgLabel, xshift=6cm]   {Output};
+    \node[function] (addContact)    [below=of outputLabel]                  {addContact};
+    \node[function] (removeContact) [below=of addContact, yshift=\shift]                   {removeContact};
+    \node[function] (procRequest)   [below=of removeContact, yshift=\shift]                {procRequest};
+    \node[function] (send)          [below=of procRequest, yshift=\shift]                  {send};
+    \node[function] (printMsg)      [below=of send, yshift=-0.5cm]                         {printMsg};
+    \node[function] (showChat)      [below=of printMsg, yshift=-2.5cm]                     {showChat};
+    \begin{pgfonlayer}{background}
+        \node[IO] (output) [fit = (outputLabel) (printMsg) (addContact) (removeContact) (procRequest) (send) (showChat)] {};
+    \end{pgfonlayer}
+    \draw[->, arr]  (confirmC) to (addContact);
+    \draw[->, arr]  (refuseC) to (removeContact);
+    \draw[->, arr]  (requestC) to (procRequest);
+    \draw[->, arr]  (procRequest) to (send);
+    
+    \node[event]    (ePrintMsg)     [right=of messageC, xshift=0.5cm]     {ePrintMsg};
+    \node[op]       (union)         [below=of ePrintMsg, xshift=-0.5cm, yshift=0.5cm]    {$\cup$};
+    \node[nod]      (tmpNod)        [left=of union]        {};
+    \node[function] (procOutMsg)    [above=of ePrintMsg, xshift=-0.5cm, yshift=-0.8cm]       {procOutMsg};
+    \draw[->, arr]  (messageC) to (ePrintMsg);
+    \draw[->, arr]  (tmpNod) to (union);
+    \draw[->, arr]  (tmpNod.north) -- (tmpNod |- procOutMsg.south);
+    \draw[<-, arr]  (union.north) -- (union |- ePrintMsg.south);
+    \node[op]       (op2)           [right=of union]        {<\%>};
+    \draw[->, arr]  (union) to (op2);
+    \draw[->, arr]  (op2.east) -- (op2 -| printMsg.west);
+    \draw[->, arr]  (procOutMsg) to (send);
+    \draw[arr] (tmpNod.west) -- (tmpNod -| eOutMsg.east);
+    
+    \node[function] (procDoubleClick)   [below=of addChat, xshift=-2.5cm, yshift=0.7cm]   {procDoubleClick};
+    \node[event]    (eShowChat)         [right=of procDoubleClick, xshift=-0.5cm]                      {eShowChat};
+    \node[op]       (op3)               [right=of eShowChat]                            {<\%>};
+    \draw[->, arr]  (procDoubleClick) to (eShowChat);
+    \draw[->, arr]  (eShowChat) to (op3);
+    
+    
+    \draw[<-, arr]  (eAddChat.north) -- (eAddChat |- messageC.south);
+    \draw[<-, arr]  (eAddChat.south) -- (eAddChat |- procDoubleClick.north);
+    
+    \node[nod]  (bTmpNod)   [right=of bChatMap, xshift=0.5cm] {};
+    \draw[arr]      (bChatMap) -- (bTmpNod);
+    \draw[->, arr]  (bTmpNod.north) -- (bTmpNod |- op2.south);
+    \draw[->, arr]  (bTmpNod) -- (op3);
+    \draw[<-, arr]  (procDoubleClick.west) -- (procDoubleClick -| eDoubleClick.east);
+    \draw[->, arr]  (op3.east) -- (op3 -| showChat.west);
+
+\end{tikzpicture}
