@@ -339,7 +339,8 @@ mainLoop name stream roster con = do
             let
 \end{code}
 
-
+@bChatMap@ --- внутреннее состояние интерфейса.
+Оператор @<%>@ --- аналог оператора @<@@>@, добавляющий к событию информацию о состоянии интерфейса.
 
 \begin{code}
                 eChatMap = accumE Map.empty $ insertSafe <$> eAddChat'
@@ -348,7 +349,7 @@ mainLoop name stream roster con = do
                 (<%>) f e = f <$> (flip (,) <$> bChatMap <@> e)
 \end{code}
 
-
+Функция, добавляющая новый чат в состояние интерфейса, если чата с данным собеседником еще нет.
 
 \begin{code}
                 addChat :: (String, Map.Map String Chat) -> IO ()
@@ -371,6 +372,8 @@ mainLoop name stream roster con = do
                     return ()
 \end{code}
 
+Обработать входящую строфу. Если пришло сообщение --- попытаться добавить новый чат, отобразить полученное сообщение.
+Если пришел запрос на добавление в список контактов --- вызвать обработчик запросов.
 
 \begin{code}
 

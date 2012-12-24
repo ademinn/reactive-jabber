@@ -6,10 +6,15 @@
 \tikzstyle{condition}=[function, text width=11em, fill=black!20]
 \tikzstyle{arr}=[>=stealth',semithick]
 \tikzstyle{tmp}=[inner sep=0,minimum size=0]
-\tikzstyle{op}=[fill=blue!20,rounded corners,minimum height=2em]
+\tikzstyle{op}=[fill=blue!20,rounded corners,minimum height=2em, text centered]
 \tikzstyle{nod}=[circle,fill=black!100, inner sep=0, minimum size=2.5, draw=black!100]
 
+\def\defw{5em}
+\def\defh{1.5em}
 \def\shift{0.5cm}
+
+\tikzstyle{def}=[minimum width=\defw, minimum height=\defh, text width=\defw]
+
 \begin{tikzpicture}
     \node       (inputLabel)                           {Input};
     \node[event] (eInMsg)           [below=of inputLabel]                   {eInMsg};
@@ -85,5 +90,12 @@
     \draw[->, arr]  (bTmpNod) -- (op3);
     \draw[<-, arr]  (procDoubleClick.west) -- (procDoubleClick -| eDoubleClick.east);
     \draw[->, arr]  (op3.east) -- (op3 -| showChat.west);
+    \draw[arr] (-1,-11.5) -- (14,-11.5);
+    
+    \node[function, def] (funcText)  [below=of input, yshift=0.1cm] {Функция};
+    \node[condition, def] (condText) [right=of funcText] {Условие};
+    \node[event, def]    (eventText) [right=of condText] {Событие};
+    \node[behavior, def] (bhvText) [right=of eventText] {Сигнал};
+    \node[op, def] (opText) [right=of bhvText] {Оператор};
 
 \end{tikzpicture}
