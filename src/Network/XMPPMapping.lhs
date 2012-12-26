@@ -2,7 +2,8 @@
 
 \subsubsection{Network.XMPPMapping}
 
-Определение интерфейса модуля.
+Модуль @Network.XMPPMapping@ используется для преобразования потока элементов @Node@ в поток элементов @InnerStanza@,
+представляющих собой XMPP-строфы, обрабатывающиеся внутри библиотеки.
 
 \begin{code}
 module Network.XMPPMapping
@@ -16,7 +17,7 @@ module Network.XMPPMapping
 )where
 \end{code}
 
-Импортирование модулей.
+Используется сторонняя библиотека gsasl\cite{gsasl}.
 
 \begin{code}
 import Network.Parser
@@ -27,9 +28,13 @@ import Data.Maybe
 import qualified Data.ByteString.Char8 as C
 \end{code}
 
+Синоним типа, представляющий собой элемент XML-потока.
+
 \begin{code}
 type XMPPNode = Node BString BString
 \end{code}
+
+Далее следует описание @InnerStanza@, а также всех вспомогательных типов данных.
 
 Шифрование потока.
 
@@ -66,7 +71,7 @@ data Iq
     deriving (Eq, Show)
 \end{code}
 
-Строфы, обработка которых происходит внутри модуля Network.XMPP.
+Строфы, обработка которых происходит внутри библиотеки.
 
 \begin{code}
 data InnerStanza
@@ -131,7 +136,7 @@ getStreamFeatures xs = StreamFeatures (getTLS xs) (getCompression xs) (getMechan
 Определить JID отправителя сообщения.
 
 \begin{code}
-getFrom :: XMPPNode -> BString
+getFrom :: XMPPNode -> JID
 getFrom (Element _ attrs _) = C.takeWhile (/= '/') . snd . fromJust . findAttribute (bShow "from") $ attrs
 \end{code}
 
@@ -144,14 +149,14 @@ getBody (Element _ _ cs) = case findChild (bShow "body") cs of
     otherwise -> bShow ""
 \end{code}
 
-Преобразовать XML элемент, содержащий сообщение, в тип Message.
+Преобразовать XML элемент, содержащий сообщение, в тип @Message@.
 
 \begin{code}
 getMessage :: XMPPNode -> Message
 getMessage node = Message (Just $ getFrom node) Nothing (getBody node)
 \end{code}
 
-Найти атрибут jid у XML элемента.
+Найти атрибут <<jid>> у XML элемента.
 
 \begin{code}
 getJID :: XMPPNode -> JID

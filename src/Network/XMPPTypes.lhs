@@ -2,7 +2,9 @@
 
 \subsubsection{Network.XMPPTypes}
 
-Определение интерфейса модуля.
+Модуль @Network.XMPPTypes@ содержит описание типов данных,
+использующихся внутри библиотеки, а также функций для работы с этими типами данных.
+
 
 \begin{code}
 module Network.XMPPTypes
@@ -50,10 +52,18 @@ instance (BShow a) => BShow (Maybe a) where
 
 showB :: (BShow a) => a -> String
 showB = C.unpack . bShow
+\end{code}
 
+Преобразование ленивых ByteString в строгие.
+
+\begin{code}
 toStrict :: LString -> BString
 toStrict = B.concat . L.toChunks
+\end{code}
 
+Конкатенация двух @BShow@-структур.
+
+\begin{code}
 (+++) :: (BShow a, BShow b) => a -> b -> BString
 (+++) a b = (bShow a) `B.append` (bShow b)
 \end{code}
