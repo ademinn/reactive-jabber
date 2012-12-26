@@ -59,10 +59,14 @@ data Stanza
 instance BShow Stanza where
     bShow (Msg m) = bShow m
     bShow (Roster ls) = bShow . show $ map showB ls
-    bShow (Sub(Request f t)) = "<presence type='subscribe'" +++ (bShowAttr "from" f) +++ (bShowAttr "to" t) +++ "/>"
-    bShow (Sub(Confirm f t)) = "<presence type='subscribed'" +++ (bShowAttr "from" f) +++ (bShowAttr "to" t) +++ "/>"
-    bShow (Sub(Refuse f t)) = "<presence type='unsubscribed'" +++ (bShowAttr "from" f) +++ (bShowAttr "to" t)
-        +++ "/><iq type='set'><query xmlns='jabber:iq:roster'><item" +++ (bShowAttr "jid" t) +++ " subscription='remove'/></query></iq>"
+    bShow (Sub(Request f t)) = "<presence type='subscribe'"
+        +++ (bShowAttr "from" f) +++ (bShowAttr "to" t) +++ "/>"
+    bShow (Sub(Confirm f t)) = "<presence type='subscribed'"
+        +++ (bShowAttr "from" f) +++ (bShowAttr "to" t) +++ "/>"
+    bShow (Sub(Refuse f t)) = "<presence type='unsubscribed'"
+        +++ (bShowAttr "from" f) +++ (bShowAttr "to" t)
+        +++ "/><iq type='set'><query xmlns='jabber:iq:roster'><item"
+        +++ (bShowAttr "jid" t) +++ " subscription='remove'/></query></iq>"
     bShow EndStream = bShow "</stream:stream>"
 
 instance Show Stanza where
@@ -182,7 +186,8 @@ sessionLoop = do
     case msg of
         (IAuth (IChallenge ch)) -> do
             (text, pr) <- lift . step64 $ ch
-            let out = "<response xmlns='urn:ietf:params:xml:ns:xmpp-sasl'>" +++ text +++ "</response>"
+            let out = "<response xmlns='urn:ietf:params:xml:ns:xmpp-sasl'>"
+                    +++ text +++ "</response>"
             sendToServer out
             case pr of
                 Complete -> sessionFinish
@@ -205,7 +210,8 @@ saslSession = do
     lift . setProperty PropertyHostname $ s
     lift . setProperty PropertyService $ bShow "xmpp"
     (text, pr) <- lift . step64 $ B.empty
-    let out = "<auth xmlns='urn:ietf:params:xml:ns:xmpp-sasl' mechanism='" +++ m +++ "'>" +++ text +++ "</auth>"
+    let out = "<auth xmlns='urn:ietf:params:xml:ns:xmpp-sasl' mechanism='"
+            +++ m +++ "'>" +++ text +++ "</auth>"
     sendToServer out
     case pr of
         Complete -> sessionFinish
@@ -264,7 +270,22 @@ hSend h bs = do
     hFlush h
 
 startStream :: BString -> BString
-startStream server = "<?xml version='1.0'?><stream:stream to='" +++ server +++ "' xmlns='jabber:client' xmlns:stream='http://etherx.jabber.org/streams' version='1.0'>"
+startStream server = "<?xml version='1.0'?><stream:stream to='"
+    +++ server
+    +++ "' xmlns='jabber:client' xmlns:stream='http://etherx.jabber.org/streams' version='1.0'>"
+
+bindStanza :: String
+bindStanza = "<iq type='set'><bind xmlns='urn:ietf:params:xml:ns:xmpp-bind'>"
+    ++ "<resource>test</resource></bind></iq>"
+
+sessionStanza :: String
+sessionStanza = "<iq type='set'><session xmlns='urn:ietf:params:xml:ns:xmpp-session'/></iq>"
+
+presenceStanza :: String
+presenceStanza = "<presence><show/></presence>"
+
+rosterRequest :: String
+rosterRequest = "<iq type='get'><query xmlns='jabber:iq:roster'/></iq>"
 \end{code}
 
 Основная функция модуля. Позволяет авторзоваться на сервере.
@@ -289,16 +310,16 @@ login server name password = do
                     setDone Auth
                 (Auth, OpenStream) -> setDone OpenAuth
                 (OpenAuth, StreamFeatures _ _ _) -> do
-                    sendToServer "<iq type='set'><bind xmlns='urn:ietf:params:xml:ns:xmpp-bind'><resource>test</resource></bind></iq>"
+                    sendToServer bindStanza
                     setDone Bind
                 (Bind, Iq IBind) -> do
-                    sendToServer "<iq type='set'><session xmlns='urn:ietf:params:xml:ns:xmpp-session'/></iq>"
+                    sendToServer sessionStanza
                     setDone Session
                 (Session, Iq ISession) -> do
-                    sendToServer "<presence><show/></presence>"
+                    sendToServer presenceStanza
                     setDone Presence
                 (Presence, IPresence) -> do
-                    sendToServer "<iq type='get'><query xmlns='jabber:iq:roster'/></iq>"
+                    sendToServer rosterRequest
                     setDone RosterD
                 (RosterD, (Iq (IRoster ls))) -> do
                     setRoster ls
@@ -313,6 +334,7 @@ login server name password = do
                 else
                     authenticate
     hSend h $ startStream server
-    (stream, ls) <- evalStateT authenticate $ ProtocolState (Info server name password) None input (hSend h) []
+    (stream, ls) <- evalStateT authenticate
+        $ ProtocolState (Info server name password) None input (hSend h) []
     return (stream, ls, Connection (hSend h))
 \end{code}

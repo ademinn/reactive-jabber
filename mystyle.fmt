@@ -1,5 +1,5 @@
 %include polycode.fmt
-%subst conid a = "\text{\tt {\color{ForestGreen}" a " }}"
+%subst conid a = "\text{\tt {\color{ForestGreen}" a "}}"
 %subst varid a = "\text{\tt {\color{Black}" a " }}"
 %subst varsym a = "\text{\tt {\color{Plum}" a " }}"
 %subst numeral a = "\text{\tt {\color{BurntOrange}" a " }}"

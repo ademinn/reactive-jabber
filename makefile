@@ -7,6 +7,7 @@ report:	srcreport
 	cd report && $(MAKE)
 	cd report && $(MAKE) bib
 	cd report && $(MAKE)
+	cd report && $(MAKE)
 
 srcreport: src/reactive-jabber.lhs src/Network/Parser.lhs src/Network/XMPPTypes.lhs src/Network/XMPPMapping.lhs src/Network/XMPP.lhs
 	lhs2TeX src/reactive-jabber.lhs -o report/reactive-jabber.tex

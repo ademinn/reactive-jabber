@@ -12,6 +12,9 @@ clean:
 	rm -f *.ptb
 	rm -f *.toc
 	rm -f *.log
+	rm -f *.bbl
+	rm -f *.blg
+	rm -f *.out
 	rm -f lhspreamble.tex
 	rm -f reactive-jabber.tex
 	rm -f Parser.tex

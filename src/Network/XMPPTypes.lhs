@@ -76,5 +76,9 @@ bShowAttr _ Nothing = B.empty
 bShowAttr a (Just b) = (" " ++ a ++ "='") +++ b +++ "'"
 
 instance BShow Message where
-    bShow (Message f t b) = "<message" +++ (bShowAttr "from" f) +++ (bShowAttr "to" t) +++ "><body>" +++ b +++ "</body></message>"
+    bShow (Message f t b) = "<message"
+        +++ (bShowAttr "from" f)
+        +++ (bShowAttr "to" t)
+        +++ "><body>" +++ b
+        +++ "</body></message>"
 \end{code}
