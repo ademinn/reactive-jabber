@@ -2,6 +2,9 @@ all:
 	lhs2TeX lhspreamble.lhs -o lhspreamble.tex
 	pdflatex main.tex
 
+bib:
+	bibtex main.aux
+
 clean:
 	rm -f *~
 	rm -f main.pdf

@@ -1,8 +1,9 @@
 %include mystyle.fmt
 
 \subsubsection{reactive-jabber}
+Собственно исходный код приложения. Создание пользовательского интерфейса, а также описание логики его поведения.
 
-Импортирование модулей.
+Использована сторонняя библиотека Gtk2Hs\cite{gtk2hs}.
 
 \begin{code}
 import Reactive.Banana
@@ -23,13 +24,22 @@ import Network.XMPPTypes
 
 Функции для работы с TextBuffer.
 
+Получить указатель на начало буфера.
 \begin{code}
 startBuf :: TextBuffer -> IO TextIter
 startBuf tb = textBufferGetIterAtOffset tb 0
+\end{code}
 
+Получить указатель на конец буфера.
+
+\begin{code}
 endBuf :: TextBuffer -> IO TextIter
 endBuf tb = textBufferGetIterAtOffset tb (-1)
+\end{code}
 
+Добавить строку текста в конец буфера.
+
+\begin{code}
 appendText :: TextBuffer -> BString -> IO ()
 appendText tb msg = do
     ti <- endBuf tb
@@ -69,7 +79,11 @@ instance GObjectClass Chat where
 
 instance ObjectClass Chat
 instance WidgetClass Chat
+\end{code}
 
+Функция, создающая виджет чата.
+
+\begin{code}
 chatNew :: String -> String -> (MsgT -> IO ()) -> IO Chat
 chatNew s name fire = do
     outputWdgt <- textViewNew
@@ -156,18 +170,6 @@ quitChat con = do
 \begin{code}
 mainLoop :: String -> [Stanza] -> [String] -> Connection -> IO ()
 mainLoop name stream roster con = do
-\end{code}
-
-Создание обработчиков событий: получение сообщения и двойной клик на элементе списка контактов.
-
-\begin{code}
-    (inMsg, fireInMsg) <- newAddHandler
-    (doubleClick, fireDoubleClick) <- newAddHandler
-\end{code}
-
-Создание интерфейса.
-
-\begin{code}
     window <- windowNew
     chWindow <- windowNew
     chats <- notebookNew
@@ -177,8 +179,19 @@ mainLoop name stream roster con = do
                     ]
     vBox <- vBoxNew False 5
     (treeview, list) <- listTreeView name roster
-    let getSel = getSelected list treeview
-        addContact jid = do
+\end{code}
+
+Создание обработчиков событий: получение строфы и двойной клик на элементе списка контактов.
+
+\begin{code}
+    (inMsg, fireInMsg) <- newAddHandler
+    (doubleClick, fireDoubleClick) <- newAddHandler
+\end{code}
+
+Функции, являющиеся выходами сети логики: добавление и удаление контактов.
+
+\begin{code}
+    let addContact jid = do
             ls <- listStoreToList list
             if jid `notElem` ls
                 then do
@@ -193,7 +206,12 @@ mainLoop name stream roster con = do
                     listStoreRemove list i
                     send con . Sub  $ Refuse (Just $ bShow name) (Just $ bShow jid)
                 Nothing -> return ()
+\end{code}
 
+Создание интерфейса.
+
+\begin{code}
+    let getSel = getSelected list treeview
     treeview `on` buttonPressEvent $ do
         click <- eventClick
         if click == DoubleClick
@@ -304,9 +322,6 @@ mainLoop name stream roster con = do
 
     requestDialog `on` response $ \_ -> do
         widgetHideAll requestDialog
-\end{code}
-
-\begin{code}
     let showRequest :: JID -> IO ResponseId
         showRequest jid = do
             labelSetText requestLabel $ "Authorize " ++ (showB jid) ++ "?"
@@ -361,6 +376,8 @@ mainLoop name stream roster con = do
                             fireAddChat' (to, c)
 \end{code}
 
+Функция обработки запросов авторизации.
+Отображает пользователю информацию о запросе, получает ответ пользователя и отправляет его серверу.
 
 \begin{code}
                 procRequest :: JID -> IO ()
@@ -372,8 +389,13 @@ mainLoop name stream roster con = do
                     return ()
 \end{code}
 
-Обработать входящую строфу. Если пришло сообщение --- попытаться добавить новый чат, отобразить полученное сообщение.
-Если пришел запрос на добавление в список контактов --- вызвать обработчик запросов.
+Функция обработки входящих строф:
+\begin{itemize}
+    \item сообщение --- попытаться добавить новый чат в состояние интерфейса, добавить сообщение в чат с данным собеседником;
+    \item запрос авторизации --- вызвать функцию обработки запросов авторизации;
+    \item одобрение запроса авторизации --- добавить новый элемент в список контаков;
+    \item отказ авторизации --- удалить элемент из списка контактов.
+\end{itemize}
 
 \begin{code}
 
@@ -391,6 +413,7 @@ mainLoop name stream roster con = do
                         otherwise -> return ()
 \end{code}
 
+Обработка исходящего сообщения. @procOutMsg@ отправляет сообщение собеседнику.
 
 \begin{code}
                 procOutMsg :: MsgT -> IO ()
@@ -399,6 +422,7 @@ mainLoop name stream roster con = do
                     send con . Msg $ Message Nothing (Just $ bShow to) (msgText msg)
 \end{code}
 
+Отображение сообщения в одном из чатов. @printMsg@ находит чат с нужным собеседником и добавляет в него текст сообщения.
 
 \begin{code}
                 printMsg :: (MsgT, Map.Map String Chat) -> IO ()
@@ -408,13 +432,21 @@ mainLoop name stream roster con = do
                     addMsg c $ bShow msg
 \end{code}
 
+Обработка двойного клика. Сначала происходит попытка добавить чат в состояние интерфейса, затем открытие чата с заданным собеседником.
 
 \begin{code}
                 procDoubleClick :: String -> IO ()
                 procDoubleClick name = do
                     fireAddChat name
                     fireShowChat name
+\end{code}
 
+Функция, открывающая чат с заданным собеседником.
+Необходимо открыть окно с чатами, если оно было закрыто.
+Затем, если еще нет вкладки чата с заданным собеседником, то необходимо ее добавить.
+После этого нужно открыть требуемую вкладку.
+
+\begin{code}
                 showChat :: (String, Map.Map String Chat) -> IO ()
                 showChat (name, m) = do
                     let chat = m Map.! name
@@ -432,6 +464,7 @@ mainLoop name stream roster con = do
                             notebookSetCurrentPage chats i
 \end{code}
 
+Установка связей сети логики интерфейса.
 
 \begin{code}
             reactimate $ (addChat <%> eAddChat) `union` (procDoubleClick <$> eDoubleClick)
@@ -439,21 +472,36 @@ mainLoop name stream roster con = do
                 `union` (procOutMsg <$> eOutMsg) `union` (procInMsg <$> eInMsg)
 \end{code}
 
+Комипиляция и запуск сети логики.
 
 \begin{code}
     network <- compile networkDescription
     widgetShowAll window
     actuate network
+\end{code}
+
+Подключение поступающих строф ко входу сети логики.
+
+\begin{code}
     forkIO $ do
         sequence $ map fireInMsg stream
         return ()
     return ()
 \end{code}
 
+Далее следует несколько вспомогательных функций.
+
+Добавить в отображение пару ключ-значение, если элемент с заданным ключом отсутствует в отображении.
+Иначе оставить отображение неизменным.
+
 \begin{code}
 insertSafe :: Ord k => (k, a) -> Map.Map k a -> Map.Map k a
 insertSafe (k, v) m = if k `Map.member` m then m else Map.insert k v m
+\end{code}
 
+Создать виджет, отображающий список элементов с заголовком, а также модель данных этого виджета.
+
+\begin{code}
 listTreeView :: String -> [String] -> IO (TreeView, ListStore String)
 listTreeView title sourceList = do
     list <- listStoreNew sourceList
@@ -467,7 +515,11 @@ listTreeView title sourceList = do
             $ \ind -> [Model.cellText := ind]
     Model.treeViewAppendColumn treeview col
     return (treeview, list)
+\end{code}
 
+Получить выделенный элемент списка.
+
+\begin{code}
 getSelected :: ListStore a -> TreeView -> IO a
 getSelected list treeView = do
     tree <- Model.treeViewGetSelection treeView
