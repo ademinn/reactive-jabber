@@ -1,8 +1,11 @@
 \documentclass[a4paper,10pt, titlepage]{article}
 \usepackage{indentfirst}
+\renewcommand{\sfdefault}{cmss}
+\renewcommand{\rmdefault}{cmr}
+\renewcommand{\ttdefault}{cmtt}
 \usepackage[cm]{fullpage}
-\usepackage[utf8]{inputenc}
 \usepackage[T2A]{fontenc}
+\usepackage[utf8]{inputenc}
 \usepackage[english,russian]{babel}
 \usepackage{titling}
 \usepackage{amsmath}
@@ -14,12 +17,21 @@
 \usepackage{tikz}
 \usetikzlibrary[arrows,decorations.pathmorphing,backgrounds,positioning,fit,petri,shapes,shadows]
 %\usetikzlibrary{shapes,arrows,shadows}
-\usepackage{bm,times}
+\usepackage{bm}
 \newcommand{\mx}[1]{\mathbf{\bm{#1}}} % Matrix command
 \newcommand{\vc}[1]{\mathbf{\bm{#1}}} % Vector command
 \usepackage[bookmarks=true,unicode=true,pdfstartview={FitV},hidelinks]{hyperref}
 \usepackage[all]{hypcap}
 \usepackage[numbers]{natbib}
+
+\makeatletter
+\renewcommand\paragraph{
+\@startsection{paragraph}{4}{0em}%
+{-1.3\baselineskip}%
+{0.3\baselineskip}%
+{\normalsize\bfseries\textit}%
+}%
+\makeatother 
 
 \input{lhspreamble.tex}
 

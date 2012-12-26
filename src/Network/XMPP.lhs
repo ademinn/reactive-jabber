@@ -2,7 +2,10 @@
 
 \subsubsection{Network.XMPP}
 
-Определение интерфейса модуля.
+В модуле @Network.XMPP@ описывается структура данных @Stanza@, представляющая строфы XMPP.
+Так же данный модуль предоставляет способ аутентификации на сервере и структуру данных,
+позволяющую отправлять строфы на сервер.
+Данные, поступающие от сервера, преобразуются в поток строф.
 
 \begin{code}
 module Network.XMPP
@@ -13,7 +16,7 @@ module Network.XMPP
 ) where
 \end{code}
 
-Подключение модулей.
+Используется сторонняя библиотека gsasl\cite{gsasl}.
 
 \begin{code}
 import System.IO
@@ -29,7 +32,7 @@ import qualified Data.ByteString as B
 import qualified Data.ByteString.Lazy as L
 \end{code}
 
-Тип, представляющий сообщения для управления подпиской (Запросить разрешение на подписку, подтвердить запрос, отклонить запрос).
+Тип, представляющий сообщения для управления подпиской (запросить разрешение на подписку, подтвердить запрос, отклонить запрос).
 
 \begin{code}
 data Subscribe
@@ -47,7 +50,7 @@ data Subscribe
         }
 \end{code}
 
-Строфы, с которыми может манипулировать (получать и отправлять) внешняя программа, использующая модуль Network.XMPP.
+Строфы, с которыми может манипулировать (получать и отправлять) внешняя программа, использующая данную библиотеку.
 
 \begin{code}
 data Stanza
@@ -114,10 +117,11 @@ data XMPPEvent
 \end{code}
 
 Процесс авторизации реализован при помощи State-монады.
-В качестве внутреннего состояния используется структура ProtocolState.
+В качестве внутреннего состояния используется структура @ProtocolState@.
 В ней записаны информация о соединении,
 последний пройденный этап авторизации,
 входной поток сообщений, соединение для отправления сообщений и список контактов.
+Переход из одного состояния в другое определяется текущим этапом авторизации и пришедшим сообщением.
 
 \begin{code}
 data ProtocolState
@@ -132,7 +136,9 @@ data ProtocolState
 type XMPPState m a = StateT ProtocolState m a
 \end{code}
 
-Вернуть очередное входящее сообщение и удалить его из входного потока.
+\paragraph{Вспомогательные функции для работы с @XMPPState@.}
+
+\emph{Вернуть} {\textit sample} очередное входящее сообщение и удалить его из входного потока.
 
 \begin{code}
 pollMsg :: (Monad m) => XMPPState m InnerStanza
@@ -141,8 +147,6 @@ pollMsg = StateT $ \s -> case s of
     (ProtocolState i d (x:xs) c m) -> do
         return $ (x, ProtocolState i d xs c m)
 \end{code}
-
-Вспомогательные функции для работы с XMPPState.
 
 Установить пройденный этап авторизации.
 
@@ -169,17 +173,27 @@ setRoster ls = StateT $ \(ProtocolState i d f c _) -> return $ ((), ProtocolStat
 
 Аутентификация на сервере при помощи SASL.
 
+Получить имя механизма аутентификации.
+
 \begin{code}
 mechName :: Mechanism -> BString
 mechName (Mechanism name) = name
+\end{code}
 
+Завершить процесс аутентификации.
+
+\begin{code}
 sessionFinish :: XMPPState Session Bool
 sessionFinish = do
     msg <- pollMsg
     case msg of
         IAuth (ISuccess _) -> return True
         otherwise -> return False
+\end{code}
 
+Цикл аутентификации.
+
+\begin{code}
 sessionLoop :: XMPPState Session Bool
 sessionLoop = do
     msg <- pollMsg
@@ -198,7 +212,11 @@ sessionLoop = do
                 Complete -> return True
                 NeedsMore -> return False
         otherwise -> return False
+\end{code}
 
+Установить параметры сессии и запустить цикл аутентификации.
+
+\begin{code}
 saslSession :: XMPPState Session Bool
 saslSession = do
     m <- mechName <$> lift mechanismName
@@ -216,17 +234,29 @@ saslSession = do
     case pr of
         Complete -> sessionFinish
         NeedsMore -> sessionLoop
+\end{code}
 
+Найти строфу во входном потоке, информирующую об ошибке, и перевести протокол в новое состояние.
+
+\begin{code}
 findFailure :: ProtocolState -> ProtocolState
 findFailure (ProtocolState i d f c m) = ProtocolState i d (tail . dropWhile (/= Failure) $ f) c m
+\end{code}
 
+Запусить клиентскую сессию процесса аутентификации.
+
+\begin{code}
 saslMap :: ProtocolState -> Mechanism -> Session (Bool, ProtocolState) -> SASL (Bool, ProtocolState)
 saslMap start m session = do
     res <- runClient m session
     case res of
         Left err -> return (False, findFailure start)
         Right ans -> return ans
+\end{code}
 
+Определить подходящий механизм и запустить процесс аутентификации.
+
+\begin{code}
 saslAuth :: [Mechanism] -> XMPPState SASL Bool
 saslAuth ms = do
     suggested <- lift . clientSuggestMechanism $ ms
@@ -289,7 +319,7 @@ rosterRequest = "<iq type='get'><query xmlns='jabber:iq:roster'/></iq>"
 \end{code}
 
 Основная функция модуля. Позволяет авторзоваться на сервере.
-Возвращает поток сообщений от сервера, начальный список контактов и структуру данных Connection.
+Возвращает поток сообщений от сервера, начальный список контактов и структуру данных @Connection@.
 
 \begin{code}
 login :: Server -> Name -> Password -> IO ([Stanza], [JID], Connection)
