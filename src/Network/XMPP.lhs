@@ -239,7 +239,8 @@ saslSession = do
 
 \begin{code}
 findFailure :: ProtocolState -> ProtocolState
-findFailure (ProtocolState i d f c m) = ProtocolState i d (tail . dropWhile (/= Failure) $ f) c m
+findFailure (ProtocolState i d f c m) =
+    ProtocolState i d (tail . dropWhile (/= Failure) $ f) c m
 \end{code}
 
 Запусить клиентскую сессию процесса аутентификации.

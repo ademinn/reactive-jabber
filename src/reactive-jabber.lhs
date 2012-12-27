@@ -119,6 +119,7 @@ main = do
     hSetEncoding stdout utf8
     initGUI
     loginDialog <- dialogNew
+    windowSetTitle loginDialog "login"
     upper <- dialogGetUpper loginDialog
     t <- tableNew 3 2 False
     loginLab <- labelNew $ Just "login"
@@ -172,6 +173,7 @@ mainLoop :: String -> [Stanza] -> [String] -> Connection -> IO ()
 mainLoop name stream roster con = do
     window <- windowNew
     chWindow <- windowNew
+    windowSetTitle chWindow "chats"
     chats <- notebookNew
     set chWindow    [ containerChild := chats
                     , windowDefaultWidth := 200
@@ -184,7 +186,7 @@ mainLoop name stream roster con = do
 Создание обработчиков событий: получение строфы и двойной клик на элементе списка контактов.
 
 \begin{code}
-    (inMsg, fireInMsg) <- newAddHandler
+    (inStanza, fireInStanza) <- newAddHandler
     (doubleClick, fireDoubleClick) <- newAddHandler
 \end{code}
 
@@ -344,7 +346,7 @@ mainLoop name stream roster con = do
             (eShowChat, fireShowChat) <- newEvent
             (ePrintMsg, firePrintMsg) <- newEvent
             (eOutMsg, fireOutMsg) <- newEvent
-            eInMsg <- fromAddHandler inMsg
+            eInStanza <- fromAddHandler inStanza
             eDoubleClick <- fromAddHandler doubleClick
 \end{code}
 
@@ -399,8 +401,8 @@ mainLoop name stream roster con = do
 
 \begin{code}
 
-                procInMsg :: Stanza -> IO ()
-                procInMsg stanza = do
+                procInStanza :: Stanza -> IO ()
+                procInStanza stanza = do
                     case stanza of
                         Msg (Message (Just f) _ b) -> do
                             fireAddChat (showB f)
@@ -469,7 +471,7 @@ mainLoop name stream roster con = do
 \begin{code}
             reactimate $ (addChat <%> eAddChat) `union` (procDoubleClick <$> eDoubleClick)
                 `union` (showChat <%> eShowChat) `union` (printMsg <%> (ePrintMsg `union` eOutMsg))
-                `union` (procOutMsg <$> eOutMsg) `union` (procInMsg <$> eInMsg)
+                `union` (procOutMsg <$> eOutMsg) `union` (procInStanza <$> eInStanza)
 \end{code}
 
 Комипиляция и запуск сети логики.
@@ -484,7 +486,7 @@ mainLoop name stream roster con = do
 
 \begin{code}
     forkIO $ do
-        sequence $ map fireInMsg stream
+        sequence $ map fireInStanza stream
         return ()
     return ()
 \end{code}

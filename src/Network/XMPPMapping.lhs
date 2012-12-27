@@ -137,7 +137,8 @@ getStreamFeatures xs = StreamFeatures (getTLS xs) (getCompression xs) (getMechan
 
 \begin{code}
 getFrom :: XMPPNode -> JID
-getFrom (Element _ attrs _) = C.takeWhile (/= '/') . snd . fromJust . findAttribute (bShow "from") $ attrs
+getFrom (Element _ attrs _) =
+    C.takeWhile (/= '/') . snd . fromJust . findAttribute (bShow "from") $ attrs
 \end{code}
 
 Определить содержание сообщения.

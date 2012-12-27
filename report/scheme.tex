@@ -16,25 +16,25 @@
 \tikzstyle{def}=[minimum width=\defw, minimum height=\defh, text width=\defw]
 
 \begin{tikzpicture}
-    \node       (inputLabel)                           {Input};
-    \node[event] (eInMsg)           [below=of inputLabel]                   {eInMsg};
-    \node[event] (eOutMsg)          [below=of eInMsg, yshift=-3.25cm]   {eOutMsg};
-    \node[event] (eDoubleClick)     [below=of eOutMsg, yshift=-2.3cm]  {eDoubleClick};
+    \node               (inputLabel)                           {Input};
+    \node[event]        (eInStanza)           [below=of inputLabel]                   {eInStanza};
+    \node[event]        (eOutMsg)          [below=of eInStanza, yshift=-3.25cm]   {eOutMsg};
+    \node[event]        (eDoubleClick)     [below=of eOutMsg, yshift=-2.3cm]  {eDoubleClick};
     \begin{pgfonlayer}{background}
-        \node[IO] (input)            [fit = (inputLabel) (eInMsg) (eOutMsg) (eDoubleClick)] {};
+        \node[IO] (input)            [fit = (inputLabel) (eInStanza) (eOutMsg) (eDoubleClick)] {};
     \end{pgfonlayer}
 
-    \node               (procInMsgLabel)    [right=of inputLabel, xshift=1.5cm]     {procInMsg};
-    \node[condition]    (confirmC)          [below=of procInMsgLabel]               {Confirm};
+    \node               (procInStanzaLabel)    [right=of inputLabel, xshift=1.5cm]     {procInStanza};
+    \node[condition]    (confirmC)          [below=of procInStanzaLabel]               {Confirm};
     \node[condition]    (refuseC)           [below=of confirmC, yshift=\shift]                     {Refuse};
     \node[condition]    (requestC)          [below=of refuseC, yshift=\shift]                      {Request};
     \node[condition]    (messageC)          [below=of requestC, yshift=-0.3cm]                     {Message};
     \begin{pgfonlayer}{background}
-        \node[function] (procInMsg) [fit = (procInMsgLabel) (messageC) (requestC) (confirmC) (refuseC)] {};
+        \node[function] (procInStanza) [fit = (procInStanzaLabel) (messageC) (requestC) (confirmC) (refuseC)] {};
     \end{pgfonlayer}
-    \draw[->, arr] (eInMsg.east) -- (eInMsg -| procInMsg.west);
+    \draw[->, arr] (eInStanza.east) -- (eInStanza -| procInStanza.west);
 
-    \node[behavior] (bChatMap)      [below=of procInMsg, xshift=2.5cm, yshift=-0.3cm] {bChatMap};
+    \node[behavior] (bChatMap)      [below=of procInStanza, xshift=2.5cm, yshift=-0.3cm] {bChatMap};
     \node[event] (eChatMap)         [below=of bChatMap, xshift=1cm, yshift=0.5cm] {eChatMap};
     \node[op] (op1) [left=of eChatMap, xshift=0.8cm] {<\%>};
     \node[function]   (addChat) [below=of eChatMap, xshift=-1cm, yshift=0.5cm] {addChat};
@@ -45,7 +45,7 @@
     \draw[<-, arr] (eChatMap.south) -- (eChatMap |- addChat.north);
     \draw[->, arr] (eChatMap.north) -- (eChatMap |- bChatMap.south);
     
-    \node           (outputLabel)   [right=of procInMsgLabel, xshift=6cm]   {Output};
+    \node           (outputLabel)   [right=of procInStanzaLabel, xshift=6cm]   {Output};
     \node[function] (addContact)    [below=of outputLabel]                  {addContact};
     \node[function] (removeContact) [below=of addContact, yshift=\shift]                   {removeContact};
     \node[function] (procRequest)   [below=of removeContact, yshift=\shift]                {procRequest};
