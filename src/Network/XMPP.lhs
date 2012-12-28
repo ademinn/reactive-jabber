@@ -16,7 +16,7 @@ module Network.XMPP
 ) where
 \end{code}
 
-Используется сторонняя библиотека gsasl\cite{gsasl}.
+Используется сторонняя библиотека gsasl~\cite{gsasl}.
 
 \begin{code}
 import System.IO

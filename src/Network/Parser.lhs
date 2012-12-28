@@ -16,7 +16,7 @@ module Network.Parser
 ) where
 \end{code}
 
-Используется сторонняя библиотека Hexpat\cite{hexpat}.
+Используется сторонняя библиотека Hexpat~\cite{hexpat}.
 
 \begin{code}
 import Text.XML.Expat.SAX

@@ -17,7 +17,7 @@ module Network.XMPPMapping
 )where
 \end{code}
 
-Используется сторонняя библиотека gsasl\cite{gsasl}.
+Используется сторонняя библиотека gsasl~\cite{gsasl}.
 
 \begin{code}
 import Network.Parser
